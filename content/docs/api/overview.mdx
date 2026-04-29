@@ -1,0 +1,83 @@
+---
+title: API overview
+description: A quick map of the buzzabout REST API — base URL, content type, error model, and where to find each endpoint.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Cards, Card } from 'fumadocs-ui/components/card';
+import { Key, Gauge, Terminal, Plug } from 'lucide-react';
+
+The buzzabout REST API is a thin layer over the same primitives the web
+app uses. Everything you can do in the product, you can do through this
+API.
+
+<Callout type="warn" title="Beta">
+  The API is in beta. The shape is stable for `topics`, `analyses`, and
+  `mentions`, but newer endpoints may change. We'll bump the URL prefix
+  from `/v1` to `/v2` before we make breaking changes.
+</Callout>
+
+## Base URL
+
+```text
+https://api.buzzabout.ai
+```
+
+All endpoints live under `/v1`. Examples in these docs use absolute
+URLs so they're easy to copy.
+
+## Content type
+
+JSON in, JSON out. Send `Content-Type: application/json` on any request
+that has a body.
+
+```http title="example request"
+POST /v1/analyses HTTP/1.1
+Host: api.buzzabout.ai
+Authorization: Bearer sk_live_...
+Content-Type: application/json
+
+{ "topic_id": "topic_01H...", "kind": "pattern_match" }
+```
+
+## Error model
+
+Errors come back with a non-2xx status and a JSON body shaped like:
+
+```json title="error.json"
+{
+  "error": {
+    "type": "invalid_request",
+    "message": "platforms must contain at least one element",
+    "param": "platforms",
+    "request_id": "req_01H..."
+  }
+}
+```
+
+| HTTP | `error.type`         | What it means                                                  |
+| ---- | -------------------- | -------------------------------------------------------------- |
+| 400  | `invalid_request`    | Body or query parameters are malformed.                        |
+| 401  | `unauthenticated`    | Missing or bad `Authorization` header.                         |
+| 403  | `forbidden`          | The key is valid but not scoped for this resource / action.    |
+| 404  | `not_found`          | The resource doesn't exist or this key can't see it.           |
+| 409  | `conflict`           | The request collides with current state (e.g. duplicate name). |
+| 429  | `rate_limited`       | See [Rate limits](/docs/api/rate-limits).                      |
+| 5xx  | `server_error`       | Something on our end. Include `request_id` when reporting.     |
+
+## Where to look next
+
+<Cards>
+  <Card icon={<Key className="text-fd-primary" />} title="Authentication" href="/docs/api/authentication">
+    How API keys work, scopes, rotation, and how to test a key.
+  </Card>
+  <Card icon={<Gauge className="text-fd-primary" />} title="Rate limits" href="/docs/api/rate-limits">
+    Per-key quotas and what `429` looks like in the wild.
+  </Card>
+  <Card icon={<Terminal className="text-fd-primary" />} title="Endpoints" href="/docs/api/endpoints/create-analysis">
+    Per-endpoint reference. Right now: topics, analyses, mentions.
+  </Card>
+  <Card icon={<Plug className="text-fd-primary" />} title="MCP equivalent" href="/docs/mcp/overview">
+    Same workflow, driven by an LLM client.
+  </Card>
+</Cards>

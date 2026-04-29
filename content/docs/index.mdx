@@ -1,0 +1,41 @@
+---
+title: Documentation
+description: API reference, MCP integrations, and tutorials for buzzabout — pattern research across real conversations.
+icon: BookOpen
+---
+
+import { Cards, Card } from 'fumadocs-ui/components/card';
+import { Rocket, Compass, Plug, Terminal } from 'lucide-react';
+
+A few terms come up everywhere in the product and the API. This index page is
+the easiest place to find what you're after.
+
+## Where to start
+
+<Cards>
+  <Card icon={<Rocket className="text-fd-primary" />} title="Quickstart" href="/docs/getting-started/quickstart">
+    Five minutes from API key to a finished pattern analysis.
+  </Card>
+  <Card icon={<Compass className="text-fd-primary" />} title="Concepts" href="/docs/getting-started/concepts">
+    Topics, mentions, patterns, analyses — the four words that come up everywhere.
+  </Card>
+  <Card icon={<Plug className="text-fd-primary" />} title="MCP overview" href="/docs/mcp/overview">
+    Plug buzzabout into Claude, ChatGPT, or any MCP-aware client.
+  </Card>
+  <Card icon={<Terminal className="text-fd-primary" />} title="API reference" href="/docs/api/overview">
+    REST endpoints, authentication, rate limits, sample requests.
+  </Card>
+</Cards>
+
+## What's here
+
+- **Tutorials** — task-shaped walkthroughs, from "I just signed up" to "I'm
+  pulling daily competitor signal into our brief deck."
+- **MCP** — how to expose buzzabout as a tool inside Claude or ChatGPT, what
+  the agent can do, and how the editorial loop works.
+- **API reference** — endpoint-by-endpoint reference, authentication, and
+  every parameter we accept.
+
+If you're new, start with the [quickstart](/docs/getting-started/quickstart).
+If you're integrating buzzabout into an LLM workflow, jump straight to
+[MCP overview](/docs/mcp/overview).

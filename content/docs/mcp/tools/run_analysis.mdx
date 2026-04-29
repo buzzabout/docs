@@ -1,0 +1,82 @@
+---
+title: run_analysis
+description: Kick off any analysis kind against an existing topic. Returns an analysis id you can poll for completion.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+
+`run_analysis` is the workhorse tool. It mirrors `POST /v1/analyses` in
+the REST API.
+
+## Input schema
+
+```json title="schema"
+{
+  "type": "object",
+  "required": ["topic_id", "kind"],
+  "properties": {
+    "topic_id": { "type": "string", "description": "Topic to analyse." },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "pattern_match",
+        "sentiment_pulse",
+        "audience_profile",
+        "competitor_compare"
+      ]
+    },
+    "question":  { "type": "string", "description": "Free-text framing." },
+    "window":    { "type": "object", "description": "Time window. e.g. { last: '7d' }." },
+    "platforms": { "type": "array",  "items": { "type": "string" } }
+  }
+}
+```
+
+## Example call
+
+<Tabs items={['Claude transcript', 'Tool input', 'Tool output']}>
+  <Tab value="Claude transcript">
+    ```text
+    User:  Run a pattern_match for cold brew on Reddit for the last week.
+    Claude: I'll call buzzabout.run_analysis with topic_id=topic_01HZ…,
+            kind="pattern_match", window={last: "7d"},
+            platforms=["reddit"].
+    ```
+  </Tab>
+  <Tab value="Tool input">
+    ```json
+    {
+      "topic_id": "topic_01HZXXXXXXXXXXXXXXXXXXXX",
+      "kind": "pattern_match",
+      "window": { "last": "7d" },
+      "platforms": ["reddit"]
+    }
+    ```
+  </Tab>
+  <Tab value="Tool output">
+    ```json
+    {
+      "analysis_id": "ana_01HZ0XXXXXXXXXXXXXXXXXXXXX",
+      "status": "pending",
+      "estimated_completion_seconds": 60,
+      "poll_url": "/v1/analyses/ana_01HZ0XXXXXXXXXXXXXXXXXXXXX"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Callout type="info">
+  `run_analysis` returns immediately. Claude will normally call
+  `fetch_mentions` or `wait_for_analysis` after this to surface the
+  finished result.
+</Callout>
+
+## Errors
+
+| Code | Meaning                                                                    |
+| ---- | -------------------------------------------------------------------------- |
+| 400  | The `kind` is unknown, or `window` is malformed.                           |
+| 403  | The API key doesn't have `analyses:write` scope.                           |
+| 404  | The `topic_id` doesn't exist or isn't visible to this key.                 |
+| 429  | Rate-limited. See [Rate limits](/docs/api/rate-limits).                    |

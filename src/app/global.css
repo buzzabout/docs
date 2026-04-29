@@ -1,0 +1,34 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+/* ===== brand tokens =====
+   Match the marketing-site palette: brand-blue oklch(0.50 0.20 260),
+   Geist Sans + Geist Mono, near-black text on near-white surfaces. */
+:root {
+  --color-fd-primary: oklch(0.50 0.20 260);
+  --color-fd-primary-foreground: oklch(0.99 0 0);
+  --color-fd-ring: oklch(0.50 0.20 260);
+}
+
+.dark {
+  --color-fd-primary: oklch(0.78 0.16 260);
+  --color-fd-primary-foreground: oklch(0.10 0 0);
+  --color-fd-ring: oklch(0.78 0.16 260);
+}
+
+/* Wire Tailwind's built-in font-sans / font-mono to the Next/font CSS vars
+   declared on <html> in app/layout.tsx. */
+@theme {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}

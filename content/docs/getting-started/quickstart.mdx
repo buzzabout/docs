@@ -1,0 +1,153 @@
+---
+title: Quickstart
+description: Five minutes from a fresh API key to a finished pattern analysis.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Steps, Step } from 'fumadocs-ui/components/steps';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+
+Spin up your first analysis in five minutes. By the end you'll have an
+API key, a project with a topic, and a finished pattern analysis you
+can read.
+
+## Prerequisites
+
+- A buzzabout account ([sign up](https://buzzabout.ai/?signup) — the
+  free tier is enough for this walkthrough).
+- A terminal with `curl`, or any HTTP client you like.
+
+## Walkthrough
+
+<Steps>
+
+<Step>
+
+### Create an API key
+
+Open **Settings → API keys** in the web app and click *New key*. Copy
+the value somewhere safe — you'll see it once.
+
+```bash
+export BUZZABOUT_KEY="YOUR_API_KEY"
+```
+
+</Step>
+
+<Step>
+
+### Create a topic
+
+This long-running container holds the signal you're going to analyse.
+Pick something real you care about — for this example we'll use "cold
+brew".
+
+<Tabs items={['cURL', 'TypeScript', 'Python']}>
+  <Tab value="cURL">
+    ```bash
+    curl https://api.buzzabout.ai/v1/topics \
+      -H "Authorization: Bearer $BUZZABOUT_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "name": "cold brew",
+        "platforms": ["reddit", "tiktok", "youtube"]
+      }'
+    ```
+  </Tab>
+  <Tab value="TypeScript">
+    ```ts title="create-topic.ts"
+    import { Buzzabout } from "@buzzabout/sdk";
+
+    const client = new Buzzabout({ apiKey: process.env.BUZZABOUT_KEY! });
+
+    const topic = await client.topics.create({
+      name: "cold brew",
+      platforms: ["reddit", "tiktok", "youtube"],
+    });
+
+    console.log(topic.id);
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```py title="create_topic.py"
+    from buzzabout import Buzzabout
+    import os
+
+    client = Buzzabout(api_key=os.environ["BUZZABOUT_KEY"])
+
+    topic = client.topics.create(
+        name="cold brew",
+        platforms=["reddit", "tiktok", "youtube"],
+    )
+
+    print(topic.id)
+    ```
+  </Tab>
+</Tabs>
+
+You'll get back a topic id, e.g. `topic_01HZXXXXXXXXXXXXXXXXXXXX`.
+
+</Step>
+
+<Step>
+
+### Run a pattern analysis
+
+<Tabs items={['cURL', 'TypeScript']}>
+  <Tab value="cURL">
+    ```bash
+    curl https://api.buzzabout.ai/v1/analyses \
+      -H "Authorization: Bearer $BUZZABOUT_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "topic_id": "topic_01HZXXXXXXXXXXXXXXXXXXXX",
+        "kind": "pattern_match",
+        "question": "What hooks are pulling on Reddit this week?"
+      }'
+    ```
+  </Tab>
+  <Tab value="TypeScript">
+    ```ts title="run-analysis.ts"
+    const analysis = await client.analyses.create({
+      topicId: topic.id,
+      kind: "pattern_match",
+      question: "What hooks are pulling on Reddit this week?",
+    });
+
+    const result = await analysis.wait();
+    console.log(result.patterns);
+    ```
+  </Tab>
+</Tabs>
+
+Pattern analyses typically finish in 30–90 seconds. The response will
+include a `result` object once `status === "succeeded"`.
+
+</Step>
+
+<Step>
+
+### Read the answer
+
+The `result.patterns` array gives you the hooks, pains, and narratives
+that buzzabout pulled out of the underlying mentions. Each pattern
+cites the posts it came from so you can verify the evidence yourself.
+
+</Step>
+
+</Steps>
+
+<Callout type="info" title="Using an LLM client?">
+  If you're integrating with Claude or ChatGPT instead of writing HTTP
+  yourself, skip ahead to [MCP / Connect Claude](/docs/mcp/claude). It's
+  a shorter path.
+</Callout>
+
+## Next steps
+
+- [Run your first qualitative analysis](/docs/tutorials/first-analysis) —
+  a longer walkthrough with the full result schema.
+- [Authentication](/docs/api/authentication) — production-grade key
+  management, scopes, and rotation.
+- [MCP overview](/docs/mcp/overview) — same workflow, but driven by an
+  LLM inside your editorial process.

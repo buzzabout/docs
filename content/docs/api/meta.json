@@ -1,0 +1,5 @@
+{
+  "title": "API reference",
+  "icon": "Terminal",
+  "pages": ["overview", "authentication", "rate-limits", "endpoints"]
+}

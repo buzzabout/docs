@@ -1,0 +1,148 @@
+---
+title: Run your first analysis
+description: A longer walkthrough — pick a topic, run a pattern analysis, read the answer, and pull the cited mentions.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+
+This tutorial assumes you've finished the
+[quickstart](/docs/getting-started/quickstart) and have an API key.
+We'll go a layer deeper: the full result schema, what each field means,
+and how to pull the cited mentions so you can verify the patterns
+yourself.
+
+## What we're building
+
+By the end you'll have a small script that:
+
+1. Creates a topic.
+2. Runs a `pattern_match` analysis against it.
+3. Polls until the analysis is done.
+4. Prints the top three patterns plus their supporting mentions.
+
+## The script
+
+<Tabs items={['TypeScript', 'Python']}>
+  <Tab value="TypeScript">
+    ```ts title="first-analysis.ts"
+    import { Buzzabout } from "@buzzabout/sdk";
+
+    const client = new Buzzabout({ apiKey: process.env.BUZZABOUT_KEY! });
+
+    async function main() {
+      // 1. Create or find the topic.
+      const topic = await client.topics.upsert({
+        name: "cold brew",
+        platforms: ["reddit", "tiktok", "youtube"],
+      });
+
+      // 2. Kick off a pattern_match analysis.
+      const analysis = await client.analyses.create({
+        topicId: topic.id,
+        kind: "pattern_match",
+        question: "What hooks are pulling on Reddit this week?",
+        window: { last: "7d" },
+      });
+
+      // 3. Poll until done. .wait() resolves on terminal status.
+      const result = await analysis.wait({ timeoutMs: 5 * 60_000 });
+
+      // 4. Print the top three patterns + cited mentions.
+      for (const p of result.patterns.slice(0, 3)) {
+        console.log(`\n${p.label}  —  ${p.confidence.toFixed(2)}`);
+        console.log(`  ${p.summary}`);
+        for (const m of p.mentions.slice(0, 2)) {
+          console.log(`    [${m.platform}] ${m.url}`);
+        }
+      }
+    }
+
+    main().catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```py title="first_analysis.py"
+    import os
+    from buzzabout import Buzzabout
+
+    client = Buzzabout(api_key=os.environ["BUZZABOUT_KEY"])
+
+    def main() -> None:
+        # 1. Create or find the topic.
+        topic = client.topics.upsert(
+            name="cold brew",
+            platforms=["reddit", "tiktok", "youtube"],
+        )
+
+        # 2. Kick off a pattern_match analysis.
+        analysis = client.analyses.create(
+            topic_id=topic.id,
+            kind="pattern_match",
+            question="What hooks are pulling on Reddit this week?",
+            window={"last": "7d"},
+        )
+
+        # 3. Poll until done.
+        result = analysis.wait(timeout_seconds=5 * 60)
+
+        # 4. Print the top three patterns + cited mentions.
+        for p in result.patterns[:3]:
+            print(f"\n{p.label}  —  {p.confidence:.2f}")
+            print(f"  {p.summary}")
+            for m in p.mentions[:2]:
+                print(f"    [{m.platform}] {m.url}")
+
+    if __name__ == "__main__":
+        main()
+    ```
+  </Tab>
+</Tabs>
+
+## What the response actually looks like
+
+```json title="result.json"
+{
+  "id": "ana_01HZ0XXXXXXXXXXXXXXXXXXXXX",
+  "topic_id": "topic_01HZXXXXXXXXXXXXXXXXXXXX",
+  "kind": "pattern_match",
+  "status": "succeeded",
+  "patterns": [
+    {
+      "label": "POV hook · 'nobody tells you'",
+      "summary": "A consistent first-person hook framed as private knowledge.",
+      "confidence": 0.91,
+      "volume": 248,
+      "mentions": [
+        {
+          "id": "men_01H...",
+          "platform": "reddit",
+          "url": "https://www.reddit.com/r/coffee/comments/...",
+          "snippet": "Nobody tells you that nitro cold brew tastes…"
+        }
+      ]
+    }
+  ]
+}
+```
+
+<Callout type="info">
+  The `patterns[].confidence` field is bounded `0..1`. Treat anything
+  below `0.6` as a lead, not a finding.
+</Callout>
+
+## Reading the cited mentions
+
+Every pattern cites at least one mention. The `mentions[].url` is a
+clickable URL on the original platform — open one or two and you'll see
+where the pattern came from. This is the part you ship in the brief
+deck, not the model's summary.
+
+## Next steps
+
+- [MCP / Overview](/docs/mcp/overview) — same flow, driven by an LLM.
+- [API / Endpoints / `POST /v1/analyses`](/docs/api/endpoints/create-analysis) —
+  the full parameter reference for the call we just made.

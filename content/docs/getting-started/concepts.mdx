@@ -1,0 +1,69 @@
+---
+title: Concepts
+description: Topics, mentions, patterns, analyses — the four words that come up everywhere.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+A few terms come up everywhere in the product and the API. Knowing them
+makes the rest of the docs much shorter to read.
+
+## Topic
+
+A **topic** is the question you're investigating. It can be a brand, a
+product category, a hashtag, a person, or a free-form phrase.
+
+```json
+{
+  "id": "topic_01HZXXX",
+  "name": "cold brew",
+  "platforms": ["reddit", "tiktok", "youtube", "instagram"]
+}
+```
+
+A topic is the long-running container. You attach analyses to it, and
+buzzabout keeps the underlying signal up to date in the background.
+
+## Mention
+
+A **mention** is a single piece of content from a real human — a Reddit
+comment, a TikTok caption, a YouTube transcript line — that touches the
+topic. Each mention is classified across ten structured dimensions the
+moment it lands: `topic`, `emotion`, `hook_type`, `narrative`, `tone`,
+`intent`, `cta`, `sentiment`, `entities`, `language`.
+
+## Pattern
+
+A **pattern** is a recurring shape in the mentions: a hook, a pain point,
+a narrative arc, a visual motif. Patterns are what you actually take to
+your brief deck.
+
+<Callout type="info" title="The mental model">
+  If "topic" is the long-running container and "mention" is one row of
+  evidence, "pattern" is the conclusion.
+</Callout>
+
+## Analysis
+
+An **analysis** is a question asked against a topic. Most of the API
+surface revolves around running analyses and reading the answers they
+produce.
+
+| Analysis kind        | Example question                                                 |
+| -------------------- | ---------------------------------------------------------------- |
+| `pattern_match`      | "What hooks are pulling on Reddit this week?"                    |
+| `sentiment_pulse`    | "How is sentiment trending on Olipop vs Poppi?"                  |
+| `audience_profile`   | "What does the engaged audience look like for cold brew?"        |
+| `competitor_compare` | "Compare share-of-voice between three competing brands."         |
+
+## Where this maps in the product
+
+- The web app's **Project** is one or more topics plus the analyses you've
+  run against them.
+- The **MCP server** exposes tools that wrap analyses — see
+  [MCP / Tools reference](/docs/mcp/tools/run_analysis).
+- The **REST API** lets you do the same things from anything that can
+  speak HTTP — see [API / Overview](/docs/api/overview).
+
+Next up: [Quickstart](/docs/getting-started/quickstart) — five minutes
+from zero to a finished analysis.
