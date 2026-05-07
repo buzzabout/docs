@@ -1,0 +1,170 @@
+---
+title: Headless agents (API key)
+description: Connect a custom MCP host to Buzzabout using x-api-key — for server-side agents and CI / scheduled jobs.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+Headless agents — server-side LLM pipelines, CI jobs, custom scripts —
+authenticate against the Buzzabout MCP server with the same
+`x-api-key` header used by the REST API. No OAuth, no redirect, no
+token storage.
+
+## When to use this path
+
+| Use API key                                           | Use [OAuth](/mcp/claude)            |
+| ----------------------------------------------------- | ----------------------------------- |
+| Server-side LLM agent, no human-in-the-loop.          | Interactive Claude Desktop / web.   |
+| Cron / scheduled MCP-driven enrichment.               | One user driving the workflow.      |
+| You don't need `buzzabout__ask`.                      | You need `buzzabout__ask`.          |
+
+The eleven tools are otherwise identical between auth modes.
+`buzzabout__ask` is the only tool that requires OAuth — see
+[Connect Claude](/mcp/claude) for that path.
+
+## Get a key
+
+`Settings → API keys → New key` in the web app. Copy the value
+(`bz_live_...`) once. See [authentication](/getting-started/auth) for
+the lifecycle and rotation guidance.
+
+## Endpoint
+
+```text
+https://api.buzzabout.ai/mcp
+```
+
+Streamable-HTTP transport. Send the API key on every request:
+
+```http
+POST /mcp HTTP/1.1
+Host: api.buzzabout.ai
+x-api-key: bz_live_...
+Content-Type: application/json
+```
+
+## Python — the official MCP SDK
+
+The Python `mcp` SDK accepts custom headers via the
+`streamablehttp_client` transport.
+
+```python title="agent.py"
+import asyncio
+import os
+
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+
+async def main() -> None:
+    headers = {"x-api-key": os.environ["BUZZABOUT_KEY"]}
+
+    async with streamablehttp_client(
+        "https://api.buzzabout.ai/mcp",
+        headers=headers,
+    ) as (read, write, _):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            tools = await session.list_tools()
+            for tool in tools.tools:
+                print(tool.name)
+
+            result = await session.call_tool(
+                "buzzabout__list_datasets",
+                arguments={"limit": 5},
+            )
+            print(result.content)
+
+
+asyncio.run(main())
+```
+
+## TypeScript — the official MCP SDK
+
+```ts title="agent.ts"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+
+const transport = new StreamableHTTPClientTransport(
+  new URL("https://api.buzzabout.ai/mcp"),
+  {
+    requestInit: {
+      headers: { "x-api-key": process.env.BUZZABOUT_KEY! },
+    },
+  },
+);
+
+const client = new Client({ name: "my-agent", version: "0.1.0" });
+await client.connect(transport);
+
+const tools = await client.listTools();
+for (const tool of tools.tools) {
+  console.log(tool.name);
+}
+
+const result = await client.callTool({
+  name: "buzzabout__list_datasets",
+  arguments: { limit: 5 },
+});
+console.log(result.content);
+```
+
+## Curl — for smoke-testing
+
+The streamable-HTTP transport is plain HTTP — `curl` works for ad-hoc
+checks. The MCP handshake involves an `initialize` call and a
+`tools/list` follow-up; the SDKs hide that, but for a smoke test:
+
+```bash
+curl -X POST https://api.buzzabout.ai/mcp \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json,text/event-stream" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list"
+  }'
+```
+
+A successful response lists every tool the key can call.
+
+## Auth flow
+
+Internally:
+
+1. Each request hits a dual-auth ASGI middleware.
+2. The middleware checks `x-api-key` first. If valid, the user is
+   resolved and the request proceeds.
+3. If `x-api-key` is missing or invalid, the middleware falls back to
+   `Authorization: Bearer <jwt>`.
+4. If neither resolves, the request gets `401` plus a
+   `WWW-Authenticate: Bearer resource_metadata="..."` header pointing
+   at the OAuth metadata document — the same hint MCP hosts use to
+   discover the OAuth flow.
+
+So a single integration can mix transports cleanly: some hosts attach
+an API key, others go through OAuth, and the server treats them the
+same way (modulo `buzzabout__ask`).
+
+## Errors
+
+Tool errors come back inside the MCP `tool/call` result as a structured
+JSON payload — same `error_code` taxonomy as the REST API. For
+example, calling `buzzabout__get_dataset` with an unknown id:
+
+```json
+{
+  "error": {
+    "code": "dataset_not_found",
+    "message": "Dataset not found",
+    "status": 404
+  }
+}
+```
+
+<Callout type="info">
+  Network-layer errors (401, 429) come back as MCP transport errors,
+  not tool-level errors — handle them at the SDK transport layer.
+</Callout>

@@ -1,0 +1,191 @@
+---
+title: Mentions
+description: POST /v1/mentions — global, filterable, paginated mentions across one or more datasets.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The mentions endpoint is **global**: one call returns mentions from
+every dataset owned by the calling account. Pass `dataset_ids` to scope
+the search; pass it `null` (or omit it) to span everything.
+
+| Method | Path           | Auth                |
+| ------ | -------------- | ------------------- |
+| POST   | `/v1/mentions` | `x-api-key` header. |
+
+The body is `POST` (not query string) because filters are
+non-trivially nested.
+
+## Request body
+
+```json title="minimal"
+{
+  "dataset_ids": ["ds_01H..."],
+  "limit": 20
+}
+```
+
+```json title="filtered + sorted"
+{
+  "dataset_ids": ["ds_01H..."],
+  "sources": ["reddit", "tiktok"],
+  "sort": "engagement_rate",
+  "order": "desc",
+  "limit": 50,
+  "filters": [
+    [
+      { "type": "sentiment", "values": ["positive"] },
+      { "type": "has_media", "value": true }
+    ],
+    [
+      { "type": "keyword", "operator": "is", "value": "nitro" }
+    ]
+  ]
+}
+```
+
+| Field            | Type    | Required | Default | Notes                                                  |
+| ---------------- | ------- | -------- | ------- | ------------------------------------------------------ |
+| dataset_ids      | array   | no       | null    | Scope. When omitted, spans every dataset on the account. |
+| sources          | array   | no       | null    | Subset of `reddit`, `tiktok`, `youtube`, `instagram`, `linkedin`. |
+| sort             | enum    | no       | `date`  | See sort table below.                                  |
+| order            | enum    | no       | `desc`  | `asc` or `desc`.                                       |
+| cursor           | string  | no       | null    | Opaque cursor from prior response. Sort-aware — pass back the same `sort` you used to fetch the previous page. |
+| limit            | integer | no       | 20      | 1–100.                                                 |
+| filters          | array   | no       | null    | OR of AND-groups (see below).                          |
+| collection_ids   | array   | no       | null    | Web-app collection scoping (rarely needed via API).    |
+
+### Sort fields
+
+`sort` accepts: `date`, `likes`, `engagement_rate`, `views`, `comments`,
+`shares`, `sentiment_score`, `dataset_run_at`.
+
+### Filters
+
+`filters` is a list of *filter groups*. Each group is a list of single
+filters. Groups are combined with **OR**, filters within a group with
+**AND**. Maximum 10 filters total across all groups.
+
+The full filter taxonomy:
+
+| Type               | Shape                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------ |
+| `keyword`          | `{ "operator": "is" \| "is_not", "value": "..." }` — max 2 words.                              |
+| `sentiment`        | `{ "values": ["positive"\|"negative"\|"neutral"] }`                                            |
+| `metric_change`    | `{ "metric": "likes"\|"views"\|"comments"\|"engagement_rate", "operator": { ... } }` — `operator` is one of `greater_than`, `less_than`, `in_range`, or `changed_by`. |
+| `source`           | `{ "values": ["reddit", ...] }`                                                                |
+| `content_topic`    | `{ "operator": "any_of", "values": [...] }`                                                    |
+| `content_intention`| `{ "operator": "any_of", "values": [...] }`                                                    |
+| `tone_of_voice`    | `{ "operator": "any_of", "values": [...] }`                                                    |
+| `hook`             | `{ "operator": "any_of", "values": [...] }`                                                    |
+| `cta`              | `{ "operator": "any_of", "values": [...] }`                                                    |
+| `mentioned_brands` | `{ "operator": { "type": "any_of"\|"equals"\|"contains", "values"/"value": ... } }`            |
+| `country_code`     | `{ "values": ["US", "GB"] }` — uppercase ISO 3166-1 alpha-2.                                   |
+| `has_media`        | `{ "value": true \| false }`                                                                   |
+| `dominant_emotion` | `{ "values": ["joy"\|"sadness"\|"anger"\|"fear"\|"surprise"\|"disgust"\|"neutral"] }`          |
+
+## Response — 200 OK
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "source": "reddit",
+      "id": "post_01H...",
+      "author": {
+        "avatar": null,
+        "title": "u/sipdaily",
+        "title_url": "https://reddit.com/u/sipdaily",
+        "headline": "",
+        "headline_url": null
+      },
+      "title": "How to make perfect cold brew",
+      "text": "Nobody tells you that nitro cold brew tastes...",
+      "url": "https://www.reddit.com/r/coffee/comments/...",
+      "media": [],
+      "num_views": 12400,
+      "are_views_estimated": true,
+      "num_likes": 248,
+      "num_comments": 32,
+      "num_shares": 0,
+      "engagement_rate": "0.020",
+      "sentiment": { "negative": "0.05", "neutral": "0.15", "positive": "0.80" },
+      "sentiment_score": "0.75",
+      "emotions": null,
+      "category": "lifestyle",
+      "content_intention": "share_experience",
+      "tone_of_voice": { "text": "casual" },
+      "narrative_structure": null,
+      "hook": { "text": "you're missing out" },
+      "cta": null,
+      "content_topics": [{ "text": "coffee" }, { "text": "cold brew" }],
+      "questions": [],
+      "mentioned_brands": ["Stumptown"],
+      "entities": ["Brooklyn"],
+      "created_at": 1714560000,
+      "dataset_run_at": 1714564890,
+      "datasets": [{ "id": "ds_01H...", "name": "cold brew" }],
+      "collections": [],
+      "comments": null
+    }
+  ],
+  "has_next": true,
+  "cursor": "eyJzb3J0X3ZhbHVlIjogIjAuMDIwIiwgImlkIjogInBvc3RfMDFIIn0"
+}
+```
+
+The same post can appear in multiple datasets — the `datasets` array
+enumerates them. Fields like `sentiment`, `emotions`, `tone_of_voice`,
+`hook`, etc. are `null` when the corresponding analysis wasn't run on
+the source dataset run.
+
+`comments` is `null` by default; the API returns full comment bodies
+only when the parent run was created with `num_comments_per_post > 0`.
+
+## Errors
+
+```json title="404 dataset_not_found"
+{
+  "status": "client_error",
+  "error_code": "dataset_not_found",
+  "detail": "Dataset not found",
+  "transient": false
+}
+```
+
+Returned when any id in `dataset_ids` doesn't exist or isn't owned by
+the calling account.
+
+```json title="422 unprocessable_entity"
+{
+  "status": "client_error",
+  "error_code": "unprocessable_entity",
+  "detail": {
+    "message": "Invalid request data",
+    "errors": { "body.filters": "Maximum 10 filters allowed, got 12" }
+  },
+  "transient": false
+}
+```
+
+## cURL
+
+```bash
+curl -X POST https://api.buzzabout.ai/v1/mentions \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dataset_ids": ["ds_01H..."],
+    "limit": 20,
+    "sort": "engagement_rate",
+    "order": "desc",
+    "filters": [[{ "type": "sentiment", "values": ["positive"] }]]
+  }'
+```
+
+<Callout type="info">
+  When you swap `sort` between calls, request a fresh page (don't reuse
+  the previous cursor) — cursors are sort-aware and validation will
+  reject a mismatched cursor.
+</Callout>

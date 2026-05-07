@@ -1,69 +1,112 @@
 ---
 title: Concepts
-description: Topics, mentions, patterns, analyses — the four words that come up everywhere.
+description: Dataset, run, mention, audience dataset, profile — the words that come up everywhere in the API and MCP.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
-A few terms come up everywhere in the product and the API. Knowing them
-makes the rest of the docs much shorter to read.
+A handful of terms come up everywhere in the product, the API, and the
+MCP server. Knowing them makes the rest of the docs much shorter to
+read.
 
-## Topic
+## Dataset
 
-A **topic** is the question you're investigating. It can be a brand, a
-product category, a hashtag, a person, or a free-form phrase.
+A **dataset** is a named container of mentions. You create one, kick
+off one or more runs against it, and the runs populate it with posts.
+The same dataset can hold posts from many runs over time.
 
 ```json
 {
-  "id": "topic_01HZXXX",
+  "id": "ds_01H...",
   "name": "cold brew",
-  "platforms": ["reddit", "tiktok", "youtube", "instagram"]
+  "mentions_count": 1247,
+  "created_at": "2026-05-01T12:00:00Z",
+  "url": "https://app.buzzabout.ai/datasets/ds_01H..."
 }
 ```
 
-A topic is the long-running container. You attach analyses to it, and
-buzzabout keeps the underlying signal up to date in the background.
+## Run
+
+A **run** is one snapshot of post collection: a search query (or list
+of URLs), a target post count, optional date range, and the analysis
+steps to apply. Runs are asynchronous — they return `pending` and
+transition through `working` to `completed` (or `failed`).
+
+```json
+{
+  "id": "dr_01H...",
+  "dataset_id": "ds_01H...",
+  "status": { "type": "completed", "steps": [...] },
+  "params": {
+    "search_query": { "type": "prompt", "sources": ["reddit"], "search_query": "..." },
+    "count": 200
+  },
+  "mentions_count": 200
+}
+```
 
 ## Mention
 
-A **mention** is a single piece of content from a real human — a Reddit
-comment, a TikTok caption, a YouTube transcript line — that touches the
-topic. Each mention is classified across ten structured dimensions the
-moment it lands: `topic`, `emotion`, `hook_type`, `narrative`, `tone`,
-`intent`, `cta`, `sentiment`, `entities`, `language`.
+A **mention** is a single post in a dataset — a Reddit thread, a TikTok
+video, a YouTube video, an Instagram reel, a LinkedIn post. The same
+post can appear in multiple datasets (the `datasets` field on each
+mention enumerates them).
+
+Each mention carries author metadata, engagement counts (views, likes,
+comments, shares), the original URL, attached media, and a structured
+content-analysis layer (sentiment, emotions, hook, CTA, tone of voice,
+content topics, mentioned brands, entities, and more) when those
+analyses ran on the parent run.
+
+<Callout type="info" title="Mental model">
+  If "dataset" is the long-running container and "run" is one collection
+  pass, "mention" is one row of evidence. Every mention links back to
+  the original platform via its `url` field.
+</Callout>
+
+## Audience dataset
+
+An **audience dataset** is a name-only container for *audience runs* —
+runs that collect creator and commenter profiles from the posts in a
+source dataset. Different audience runs in the same container can
+target different source datasets over time.
+
+```json
+{
+  "id": "ad_01H...",
+  "name": "cold brew creators",
+  "profile_count": 850
+}
+```
+
+## Audience profile
+
+A **profile** is one creator or commenter from one audience run. It
+captures the platform-specific account metadata (username, display
+name, avatar, verification, follower / following / content counts, bio,
+external link), an LLM-derived audience layer (creator tier, niche,
+interest clusters, brand affinities, communication tone, OCEAN
+personality scores, summary), and a normalised authenticity / engagement
+profile.
 
 ## Pattern
 
-A **pattern** is a recurring shape in the mentions: a hook, a pain point,
-a narrative arc, a visual motif. Patterns are what you actually take to
-your brief deck.
-
-<Callout type="info" title="The mental model">
-  If "topic" is the long-running container and "mention" is one row of
-  evidence, "pattern" is the conclusion.
-</Callout>
-
-## Analysis
-
-An **analysis** is a question asked against a topic. Most of the API
-surface revolves around running analyses and reading the answers they
-produce.
-
-| Analysis kind        | Example question                                                 |
-| -------------------- | ---------------------------------------------------------------- |
-| `pattern_match`      | "What hooks are pulling on Reddit this week?"                    |
-| `sentiment_pulse`    | "How is sentiment trending on Olipop vs Poppi?"                  |
-| `audience_profile`   | "What does the engaged audience look like for cold brew?"        |
-| `competitor_compare` | "Compare share-of-voice between three competing brands."         |
+A **pattern** is a recurring shape across mentions — a hook framing, a
+narrative arc, a visual motif. Patterns are produced by the AI
+assistant during pattern-detection runs and surfaced as references
+inside an `buzzabout__ask` response. They aren't a directly-create-able
+public API surface in v1; you discover them through the assistant.
 
 ## Where this maps in the product
 
-- The web app's **Project** is one or more topics plus the analyses you've
-  run against them.
-- The **MCP server** exposes tools that wrap analyses — see
-  [MCP / Tools reference](/docs/mcp/tools/run_analysis).
-- The **REST API** lets you do the same things from anything that can
-  speak HTTP — see [API / Overview](/docs/api/overview).
+- The web app's **dataset** is a dataset.
+- The **REST API** lets you do everything the web app can, scoped to
+  one account by API key.
+- The **MCP server** exposes a thin set of tools so an LLM client like
+  Claude can drive the same workflow.
+- The **AI assistant** sits behind `buzzabout__ask` (MCP) — it can
+  create datasets, kick off runs, and analyse the results
+  conversationally.
 
-Next up: [Quickstart](/docs/getting-started/quickstart) — five minutes
-from zero to a finished analysis.
+Next up: [quickstart](/getting-started/quickstart) — five minutes from
+zero to a finished dataset.

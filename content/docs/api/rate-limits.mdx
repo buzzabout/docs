@@ -1,81 +1,79 @@
 ---
 title: Rate limits
-description: Per-key quotas, the response headers we return, and how to back off cleanly.
+description: Per-key quotas and how to back off cleanly.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 
-The API enforces two limits per key:
-
-| Limit                | Window      | Default               |
-| -------------------- | ----------- | --------------------- |
-| Requests             | rolling 60s | 60 requests / minute  |
-| Concurrent analyses  | live        | 5 in-flight           |
-
-Larger plans get higher numbers — see the
-[pricing page](https://buzzabout.ai/Pricing.html). If you need a custom
-limit for a specific integration, mail support.
-
-## What you get back on every request
-
-Every response (success or failure) includes three headers so you can
-track headroom without polling:
-
-```http
-X-RateLimit-Limit: 60
-X-RateLimit-Remaining: 47
-X-RateLimit-Reset: 1717091400
-```
-
-`X-RateLimit-Reset` is a Unix timestamp — the wall-clock second at
-which the bucket fully refills.
+The API enforces per-key request limits. Defaults are set at the
+account-plan level — see the [pricing page](https://buzzabout.ai/Pricing.html)
+for the current tier ceilings, or contact support for a custom limit.
 
 ## What `429` looks like
 
 ```json title="429 body"
 {
-  "error": {
-    "type": "rate_limited",
-    "message": "60 requests per minute exceeded.",
-    "retry_after_ms": 8500
-  }
+  "status": "client_error",
+  "error_code": "too_many_requests",
+  "detail": "Too many requests. Please slow down.",
+  "transient": true
 }
 ```
 
-The response also sets a `Retry-After` header (seconds, integer). Trust
-it — sleep at least that long before retrying.
+The `transient: true` flag is your signal that retrying after a delay
+should succeed.
 
 ## Recommended client behaviour
-
-<Callout type="info">
-  The official SDKs already do this. If you're calling the REST API
-  directly, copy the pattern.
-</Callout>
 
 ```ts title="retry.ts"
 async function call(url: string, init: RequestInit, attempt = 0): Promise<Response> {
   const res = await fetch(url, init);
   if (res.status !== 429 || attempt >= 5) return res;
-
-  const retry = Number(res.headers.get('retry-after') ?? 1);
-  // jittered exponential back-off, capped at 60s
-  const delay = Math.min(60_000, (retry * 1000) * 2 ** attempt + Math.random() * 250);
-  await new Promise(r => setTimeout(r, delay));
+  // Exponential back-off with jitter, capped at 60s.
+  const delay = Math.min(60_000, 1_000 * 2 ** attempt + Math.random() * 250);
+  await new Promise((r) => setTimeout(r, delay));
   return call(url, init, attempt + 1);
 }
 ```
 
-## Concurrency limits
+## Async-run quotas
 
-`POST /v1/analyses` can return `429` even when the rolling-60s budget
-isn't spent — that's the concurrent-analyses cap. The body's
-`error.type` distinguishes:
+Runs (`POST /v1/datasets/{id}/runs`,
+`POST /v1/audience_datasets/{id}/runs`) consume credits, not request
+quota. When the account is out of credits, the response is `402`:
 
-| `error.type`       | Meaning                                                   |
-| ------------------ | --------------------------------------------------------- |
-| `rate_limited`     | You hit the per-minute request cap.                       |
-| `concurrency_limit`| You have too many analyses running at once.               |
+```json title="402 body"
+{
+  "status": "client_error",
+  "error_code": "insufficient_credits_dataset_run",
+  "detail": "Insufficient credits to start this dataset run",
+  "transient": false
+}
+```
 
-For `concurrency_limit`, polling more aggressively won't help — wait
-for one of your running analyses to finish (poll
-`GET /v1/analyses/:id`).
+Top up credits in **Settings → Billing** before the run will accept.
+
+## Per-audience-dataset concurrency
+
+A single audience dataset only allows one in-flight run at a time. A
+second `POST /v1/audience_datasets/{id}/runs` while another is pending
+or working returns `409`:
+
+```json
+{
+  "status": "client_error",
+  "error_code": "audience_dataset_run_already_in_flight",
+  "detail": "Another run for this audience dataset is already pending or working. Wait for it to finish before starting a new one.",
+  "transient": false
+}
+```
+
+Poll `GET /v1/audience_datasets/{id}/runs/{run_id}` until the existing
+run terminates, then retry. Regular datasets do not have this
+restriction — multiple runs can be in flight concurrently against the
+same dataset.
+
+<Callout type="info">
+  All quotas are advisory between releases. If you're integrating
+  Buzzabout into a product and need a written limit, mail support.
+</Callout>

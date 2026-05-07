@@ -1,4 +1,4 @@
 {
   "title": "Endpoints",
-  "pages": ["create-analysis"]
+  "pages": ["datasets", "audience-datasets", "mentions", "audience-profiles"]
 }

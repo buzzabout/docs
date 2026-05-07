@@ -1,0 +1,277 @@
+---
+title: Audience datasets
+description: Eight endpoints — create, list, retrieve, update, delete an audience dataset, plus create / list / retrieve runs.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+An **audience dataset** is a name-only container of audience runs.
+Each run is bound at creation time to a *source dataset* — the audience
+pipeline reads that dataset's posts and walks authors plus commenters
+to build creator and commenter profiles.
+
+Different runs in the same audience-dataset container can target
+different source datasets over time, so the container is the long-lived
+bucket and each run captures one snapshot of one source.
+
+All eight endpoints require the `x-api-key` header. Resources are
+scoped to the account that owns the key.
+
+## Endpoint summary
+
+| Method | Path                                                          | Purpose                              |
+| ------ | ------------------------------------------------------------- | ------------------------------------ |
+| POST   | `/v1/audience_datasets`                                       | Create an audience-dataset container.|
+| GET    | `/v1/audience_datasets`                                       | List audience datasets.              |
+| GET    | `/v1/audience_datasets/{audience_dataset_id}`                 | Retrieve an audience dataset.        |
+| PATCH  | `/v1/audience_datasets/{audience_dataset_id}`                 | Update (name only).                  |
+| DELETE | `/v1/audience_datasets/{audience_dataset_id}`                 | Soft-delete.                         |
+| POST   | `/v1/audience_datasets/{audience_dataset_id}/runs`            | Trigger an async profile-collection run. |
+| GET    | `/v1/audience_datasets/{audience_dataset_id}/runs`            | List runs for an audience dataset.   |
+| GET    | `/v1/audience_datasets/{audience_dataset_id}/runs/{run_id}`   | Retrieve a single run.               |
+
+---
+
+## POST /v1/audience_datasets
+
+Create an empty audience-dataset container.
+
+**Request body**
+
+```json
+{ "name": "cold brew creators" }
+```
+
+| Field | Type   | Required | Notes              |
+| ----- | ------ | -------- | ------------------ |
+| name  | string | yes      | 1–255 characters.  |
+
+**Response — 201 Created**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "ad_01H...",
+    "name": "cold brew creators",
+    "created_at": "2026-05-01T12:00:00Z"
+  }
+}
+```
+
+**cURL**
+
+```bash
+curl -X POST https://api.buzzabout.ai/v1/audience_datasets \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "cold brew creators" }'
+```
+
+---
+
+## GET /v1/audience_datasets
+
+Cursor-paginated list, sorted by `created_at`.
+
+**Query parameters** — same as the dataset list endpoint
+([reference](/api/endpoints/datasets)).
+
+**Response — 200 OK**
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "ad_01H...",
+      "name": "cold brew creators",
+      "profile_count": 850,
+      "created_at": "2026-05-01T12:00:00Z",
+      "updated_at": "2026-05-01T12:30:00Z"
+    }
+  ],
+  "has_next": false,
+  "cursor": null
+}
+```
+
+`profile_count` is the number of unique profiles in the *latest
+completed* run. There's no `url` field — the public surface
+intentionally omits the FE detail page in v1.
+
+---
+
+## GET /v1/audience_datasets/&#123;audience_dataset_id&#125;
+
+**Response — 200 OK**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "ad_01H...",
+    "name": "cold brew creators",
+    "profile_count": 850,
+    "created_at": "2026-05-01T12:00:00Z",
+    "updated_at": "2026-05-01T12:30:00Z"
+  }
+}
+```
+
+**Errors**
+
+```json title="404 audience_dataset_not_found"
+{
+  "status": "client_error",
+  "error_code": "audience_dataset_not_found",
+  "detail": "Audience dataset not found",
+  "transient": false
+}
+```
+
+---
+
+## PATCH /v1/audience_datasets/&#123;audience_dataset_id&#125;
+
+Same shape and semantics as `PATCH /v1/datasets/{id}` — only the `name`
+field is updatable; an empty body is a no-op; an empty string clears
+the name.
+
+---
+
+## DELETE /v1/audience_datasets/&#123;audience_dataset_id&#125;
+
+Soft-delete the container and all its runs. Profiles collected by past
+runs are no longer accessible afterwards via either the per-container
+or the global endpoints.
+
+**Response — 204 No Content** — empty body.
+
+---
+
+## POST /v1/audience_datasets/&#123;audience_dataset_id&#125;/runs
+
+Kick off an async profile-collection run. Returns immediately with the
+run id and `pending` status. Poll
+`GET /v1/audience_datasets/{id}/runs/{run_id}` for progress.
+
+**Request body**
+
+```json
+{
+  "source_dataset_id": "ds_01H...",
+  "total_profile_count": 850
+}
+```
+
+| Field                | Type    | Required | Default | Notes                              |
+| -------------------- | ------- | -------- | ------- | ---------------------------------- |
+| source_dataset_id    | string  | yes      | —       | A dataset owned by the account, with at least one completed run. |
+| total_profile_count  | integer | no       | 850     | 1–2000.                            |
+
+The pipeline reads the source dataset's posts (across every completed
+run, deduped by `(source, post_id)`, sorted `created_at DESC`, top
+~2000) and walks authors plus commenters until `total_profile_count`
+profiles are collected.
+
+**Response — 202 Accepted**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "adr_01H...",
+    "audience_dataset_id": "ad_01H...",
+    "source_dataset_id": "ds_01H...",
+    "status": { "type": "pending", "steps": [] },
+    "created_at": "2026-05-01T12:00:30Z"
+  }
+}
+```
+
+**Errors**
+
+| HTTP | `error_code`                                  | When                                                                |
+| ---- | --------------------------------------------- | ------------------------------------------------------------------- |
+| 404  | `audience_dataset_not_found`                  | Audience dataset doesn't exist or isn't owned by the key.           |
+| 404  | `dataset_not_found`                           | Source dataset doesn't exist or isn't owned by the key.             |
+| 400  | `source_dataset_has_no_completed_run`         | Source dataset exists but no run has finished yet.                  |
+| 409  | `audience_dataset_run_already_in_flight`      | Another run on this audience dataset is pending or working.         |
+| 402  | `insufficient_credits_audience_dataset_run`   | Account out of credits.                                             |
+
+```json title="409 example"
+{
+  "status": "client_error",
+  "error_code": "audience_dataset_run_already_in_flight",
+  "detail": "Another run for this audience dataset is already pending or working. Wait for it to finish before starting a new one.",
+  "transient": false
+}
+```
+
+**cURL**
+
+```bash
+curl -X POST https://api.buzzabout.ai/v1/audience_datasets/ad_01H.../runs \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_dataset_id": "ds_01H...",
+    "total_profile_count": 850
+  }'
+```
+
+---
+
+## GET /v1/audience_datasets/&#123;audience_dataset_id&#125;/runs
+
+Cursor-paginated list of runs.
+
+**Query parameters** — same as the dataset list endpoint.
+
+---
+
+## GET /v1/audience_datasets/&#123;audience_dataset_id&#125;/runs/&#123;run_id&#125;
+
+**Response — 200 OK**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "adr_01H...",
+    "audience_dataset_id": "ad_01H...",
+    "source_dataset_id": "ds_01H...",
+    "status": {
+      "type": "completed",
+      "steps": [
+        { "name": "fetch_posts", "completed_at": 1714564890 },
+        { "name": "collect_profiles", "completed_at": 1714565410 },
+        { "name": "analyze_profiles", "completed_at": 1714566010 }
+      ]
+    },
+    "target_profile_count": 850,
+    "profile_count": 850,
+    "created_at": "2026-05-01T12:00:30Z",
+    "updated_at": "2026-05-01T12:20:10Z"
+  }
+}
+```
+
+**Errors**
+
+```json title="404 audience_dataset_run_not_found"
+{
+  "status": "client_error",
+  "error_code": "audience_dataset_run_not_found",
+  "detail": "Audience dataset run not found",
+  "transient": false
+}
+```
+
+<Callout type="info">
+  Profiles collected by a run aren't returned by these endpoints —
+  fetch them via
+  [`POST /v1/audience_profiles`](/api/endpoints/audience-profiles) with
+  `audience_dataset_ids: [audience_dataset_id]`.
+</Callout>

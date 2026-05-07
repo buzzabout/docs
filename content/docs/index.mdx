@@ -1,41 +1,45 @@
 ---
 title: Documentation
-description: API reference, MCP integrations, and tutorials for buzzabout — pattern research across real conversations.
+description: REST API, MCP server, and getting-started guides for Buzzabout — programmatic access to mentions, datasets, audience profiles, and the AI assistant.
 icon: BookOpen
 ---
 
 import { Cards, Card } from 'fumadocs-ui/components/card';
 import { Rocket, Compass, Plug, Terminal } from 'lucide-react';
 
-A few terms come up everywhere in the product and the API. This index page is
-the easiest place to find what you're after.
+Buzzabout exposes two programmatic surfaces: a public **REST API** and an
+**MCP server**. Both are backed by the same primitives that power the
+web app — datasets, dataset runs, mentions, audience datasets, audience
+profiles, and an AI assistant.
 
 ## Where to start
 
 <Cards>
-  <Card icon={<Rocket className="text-fd-primary" />} title="Quickstart" href="/docs/getting-started/quickstart">
-    Five minutes from API key to a finished pattern analysis.
+  <Card icon={<Rocket className="text-fd-primary" />} title="Quickstart" href="/getting-started/quickstart">
+    Five minutes from API key to your first dataset and mentions list.
   </Card>
-  <Card icon={<Compass className="text-fd-primary" />} title="Concepts" href="/docs/getting-started/concepts">
-    Topics, mentions, patterns, analyses — the four words that come up everywhere.
+  <Card icon={<Compass className="text-fd-primary" />} title="Concepts" href="/getting-started/concepts">
+    Dataset, run, mention, audience dataset, profile — the words that
+    come up everywhere.
   </Card>
-  <Card icon={<Plug className="text-fd-primary" />} title="MCP overview" href="/docs/mcp/overview">
-    Plug buzzabout into Claude, ChatGPT, or any MCP-aware client.
+  <Card icon={<Plug className="text-fd-primary" />} title="MCP overview" href="/mcp/overview">
+    Plug Buzzabout into Claude, ChatGPT, or any MCP-aware agent.
   </Card>
-  <Card icon={<Terminal className="text-fd-primary" />} title="API reference" href="/docs/api/overview">
-    REST endpoints, authentication, rate limits, sample requests.
+  <Card icon={<Terminal className="text-fd-primary" />} title="API reference" href="/api/overview">
+    REST endpoints, response envelope, errors, and pagination.
   </Card>
 </Cards>
 
 ## What's here
 
-- **Tutorials** — task-shaped walkthroughs, from "I just signed up" to "I'm
-  pulling daily competitor signal into our brief deck."
-- **MCP** — how to expose buzzabout as a tool inside Claude or ChatGPT, what
-  the agent can do, and how the editorial loop works.
-- **API reference** — endpoint-by-endpoint reference, authentication, and
-  every parameter we accept.
+- **Getting started** — quickstart, concepts, and authentication.
+- **API reference** — the four endpoint groups (datasets, audience
+  datasets, mentions, audience profiles) plus rate limits.
+- **MCP** — install in Claude Desktop, headless agent setup, the 11
+  exposed tools, and the `buzzabout__ask` chat tool.
+- **Tutorials** — task-shaped walkthroughs that combine multiple
+  endpoints.
 
-If you're new, start with the [quickstart](/docs/getting-started/quickstart).
-If you're integrating buzzabout into an LLM workflow, jump straight to
-[MCP overview](/docs/mcp/overview).
+If you're new, start with the [quickstart](/getting-started/quickstart).
+If you're integrating Buzzabout into an LLM workflow, jump straight to
+[MCP overview](/mcp/overview).

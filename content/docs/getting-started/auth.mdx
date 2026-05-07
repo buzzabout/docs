@@ -1,0 +1,111 @@
+---
+title: Authentication
+description: API keys for REST + headless MCP, and OAuth for Claude Desktop and other interactive MCP clients.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+Buzzabout supports two ways to authenticate:
+
+- **API keys** — for REST clients and headless agents. One header,
+  `x-api-key`. No expiry, no refresh.
+- **OAuth 2.1** — for interactive MCP clients (Claude Desktop, Claude
+  on the web). The user signs in, the client stores a token. This is
+  what you set up in the [Claude install guide](/mcp/claude).
+
+Use API keys for scripts, scheduled jobs, and headless agents. Use OAuth
+for human-in-the-loop chat clients.
+
+## API keys
+
+API keys live under **Settings → API keys** in the web app. Click
+*New key*, name it, copy the value — it's shown once.
+
+Keys look like `bz_live_<random>`. They're tied to one Buzzabout
+account; every request the key makes is scoped to that account's
+resources.
+
+### Sending the key
+
+```http
+GET /v1/datasets HTTP/1.1
+Host: api.buzzabout.ai
+x-api-key: bz_live_...
+```
+
+```bash title="cURL"
+curl https://api.buzzabout.ai/v1/datasets \
+  -H "x-api-key: $BUZZABOUT_KEY"
+```
+
+### Verifying a key
+
+Hit `GET /v1/datasets` with `limit=1`. A 200 means the key is valid.
+A 401 means it's missing or revoked.
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" \
+  https://api.buzzabout.ai/v1/datasets?limit=1 \
+  -H "x-api-key: $BUZZABOUT_KEY"
+```
+
+### Rotation
+
+There's no built-in expiration. Rotate by:
+
+1. Creating a new key under **Settings → API keys**.
+2. Updating your environment / secret store.
+3. Revoking the old key.
+
+Revoked keys return `401` immediately on the next call — there's no
+grace period.
+
+<Callout type="warn" title="Don't commit keys to Git">
+  Even short-lived test keys leak into PR diffs. Use a `.env` file in
+  `.gitignore`, a secret manager, or a CI secret store.
+</Callout>
+
+### Using API keys with MCP
+
+The MCP server accepts the same `x-api-key` header as the REST API.
+Headless agents (your own integration, a server-side LLM pipeline) can
+authenticate this way without going through OAuth. See [MCP / API key
+auth](/mcp/api-key) for the headless setup.
+
+The one MCP tool that requires user-bound auth is `buzzabout__ask` —
+it impersonates a user against the AI assistant chat backend, so it
+needs an OAuth/JWT identity. API-key callers calling
+`buzzabout__ask` get a structured `forbidden` error. All ten other
+tools work fine with either auth method.
+
+## OAuth (MCP only)
+
+Interactive MCP clients use OAuth 2.1 to obtain a user-scoped JWT.
+This is automatic when you install the Buzzabout MCP server in Claude
+Desktop or Claude on the web — the client handles the redirect, the
+authorisation code, and the token storage.
+
+The OAuth surface is exposed at:
+
+```text
+https://api.buzzabout.ai/mcp/oauth/...
+```
+
+You don't normally interact with it directly. If you're building your
+own MCP host, point your OAuth flow at:
+
+```text
+https://api.buzzabout.ai/mcp/.well-known/oauth-authorization-server
+```
+
+and follow the discovered metadata. The setup matches the [MCP OAuth
+2.1 spec](https://modelcontextprotocol.io/).
+
+## What's next
+
+- [Quickstart](/getting-started/quickstart) — first dataset, first
+  mentions, with an API key.
+- [Connect Claude](/mcp/claude) — install the MCP server in Claude
+  Desktop with OAuth.
+- [Headless MCP / API key](/mcp/api-key) — wire MCP into a custom agent
+  using `x-api-key`.

@@ -1,0 +1,40 @@
+---
+title: Dev tools
+description: Recommended developer tooling that pairs well with the Buzzabout MCP server.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The MCP loop is at its best when other tools in your dev stack speak
+the same protocol. A short list of what we recommend.
+
+## Agentation
+
+[Agentation](https://www.agentation.com) is a UI-annotation tool for
+agents. A developer annotates UI elements in their app and Agentation
+emits structured context — CSS selectors, file paths, component
+hierarchy — that an agent (Claude Code, Cursor, or your custom MCP
+host) can consume. The MCP integration is native and free for internal
+use.
+
+It pairs well with Buzzabout MCP when you're closing the loop between
+UI feedback and agent code generation: Buzzabout supplies the *what
+people are saying* layer (mentions, audience profiles, AI-assistant
+analysis), and Agentation supplies the *which UI element is the user
+looking at* layer. Together they make it cheap for an agent to act on
+real signal in a real interface.
+
+- Site: [agentation.com](https://www.agentation.com)
+- MCP-compatible out of the box, with both OAuth and API-key paths.
+
+<Callout type="info">
+  Recommended for closing the loop between UI feedback and agent code
+  generation when integrating Buzzabout via MCP.
+</Callout>
+
+## Want more?
+
+If there's a tool you wish lived in this list — or you build one — mail
+[support@buzzabout.ai](mailto:support@buzzabout.ai) with a one-line
+pitch. We're keeping this page short on purpose; we'd rather link the
+two or three things we trust than crowd the surface.

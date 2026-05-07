@@ -1,23 +1,24 @@
 ---
 title: Connect Claude
-description: Add the buzzabout MCP server to Claude desktop or claude.ai so the model can run analyses on your behalf.
+description: Install the Buzzabout MCP server in Claude Desktop or Claude on the web with OAuth.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 import { Steps, Step } from 'fumadocs-ui/components/steps';
 import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
 
-Add the buzzabout MCP server to Claude. Once it's wired up, you can ask
-Claude things like *"Find the top three hooks pulling on Reddit for
-cold brew this week"* and it will call our tools, stream the result
-back, and cite the mentions it found.
+Add the Buzzabout MCP server to Claude. Once it's wired up you can
+ask Claude things like *"Find the top-engaging posts on Reddit
+mentioning cold brew this week and summarise their hooks"* and it will
+call our tools, stream a markdown response back, and link the source
+posts.
 
 ## Prerequisites
 
-- A buzzabout API key. Generate one in **Settings → API keys** in the
-  web app. Treat it like a password.
-- Claude Desktop ([download](https://claude.ai/download)) or a Claude.ai
-  workspace with custom integrations enabled.
+- A Buzzabout account.
+- Claude Desktop ([download](https://claude.ai/download)) or a
+  Claude.ai workspace with custom integrations enabled (Team /
+  Enterprise plans).
 
 ## Add the server
 
@@ -35,35 +36,31 @@ back, and cite the mentions it found.
 
 <Step>
 
-### Paste the buzzabout block
+### Paste the Buzzabout block
 
-<Tabs items={['Claude Desktop (JSON)', 'Claude.ai (HTTP / SSE)']}>
-  <Tab value="Claude Desktop (JSON)">
+<Tabs items={['Claude Desktop (HTTP)', 'Claude.ai (HTTP)']}>
+  <Tab value="Claude Desktop (HTTP)">
+    Claude Desktop supports remote MCP servers natively. Point it at
+    the streamable HTTP transport — Claude will run the OAuth flow on
+    first connection.
+
     ```json title="claude_desktop_config.json"
     {
       "mcpServers": {
         "buzzabout": {
-          "command": "npx",
-          "args": [
-            "-y",
-            "@buzzabout/mcp-server"
-          ],
-          "env": {
-            "BUZZABOUT_API_KEY": "YOUR_API_KEY"
-          }
+          "transport": "streamable-http",
+          "url": "https://api.buzzabout.ai/mcp"
         }
       }
     }
     ```
   </Tab>
-  <Tab value="Claude.ai (HTTP / SSE)">
-    Use the hosted SSE endpoint — no local install required.
-
-    | Field    | Value                                                |
-    | -------- | ---------------------------------------------------- |
-    | Name     | `buzzabout`                                          |
-    | URL      | `https://mcp.buzzabout.ai/v1/sse`                    |
-    | Auth     | `Authorization: Bearer YOUR_API_KEY` |
+  <Tab value="Claude.ai (HTTP)">
+    | Field | Value                              |
+    | ----- | ---------------------------------- |
+    | Name  | `buzzabout`                        |
+    | URL   | `https://api.buzzabout.ai/mcp`     |
+    | Auth  | OAuth (Claude handles the redirect) |
   </Tab>
 </Tabs>
 
@@ -71,24 +68,25 @@ back, and cite the mentions it found.
 
 <Step>
 
-### Restart Claude
+### Authorise
 
-Desktop reloads the config on restart. Web takes effect on the next
-conversation.
+The first time Claude calls a tool, it'll open a browser window to
+`api.buzzabout.ai/mcp/oauth/authorize`. Sign in with your Buzzabout
+account; Claude exchanges the redirect code for a JWT and stores it
+locally. You won't see this prompt again until the token expires.
 
 </Step>
 
 <Step>
 
-### Verify the connection
+### Verify
 
 Open a new conversation and ask:
 
-> *"Which buzzabout tools do you have available?"*
+> *"Which Buzzabout tools do you have available?"*
 
-Claude should list `list_topics`, `create_topic`, `run_analysis`,
-`fetch_mentions`, and `summarize_brief`. If it doesn't, see
-[Troubleshooting](#troubleshooting) below.
+Claude should list the eleven `buzzabout__*` tools. If it doesn't, see
+[Troubleshooting](#troubleshooting).
 
 </Step>
 
@@ -98,57 +96,54 @@ Claude should list `list_topics`, `create_topic`, `run_analysis`,
 
 Once the server is wired up, try this:
 
-> *"Run a `pattern_match` analysis for the topic 'cold brew' on Reddit
-> over the last 7 days. Then summarise the top three hooks and link the
-> mentions you cite."*
+> *"Create a new dataset called 'cold brew' and kick off a Reddit run
+> for the search query 'cold brew' over the last week. When it's
+> done, list the top 5 mentions sorted by engagement and summarise
+> the hooks they use."*
 
 Claude will:
 
-1. Call `list_topics` to see whether *cold brew* already exists.
-2. If not, call `create_topic`.
-3. Call `run_analysis` with `kind: "pattern_match"` and a 7-day window.
-4. Call `fetch_mentions` for the top patterns.
-5. Stream a written summary back to you with citations.
+1. Call `buzzabout__create_dataset`.
+2. Call `buzzabout__create_dataset_run` with the prompt search query.
+3. Poll `buzzabout__get_dataset_run` until completion.
+4. Call `buzzabout__list_mentions` with `dataset_ids: [new id]`,
+   `sort: engagement_rate`, `limit: 5`.
+5. Stream a markdown summary back to you with citations.
 
-Each tool call is visible in Claude's UI — click it to inspect what was
+Each tool call is visible in Claude's UI — click to inspect what was
 sent and what came back.
 
-## Permissions and scopes
+## When to use OAuth vs API key
 
-The API key you paste in the config inherits its workspace's
-permissions. To restrict what Claude can do, generate a **scoped key**
-under `Settings → API keys → Scoped key`:
+| Use OAuth                              | Use [API key](/mcp/api-key)             |
+| -------------------------------------- | --------------------------------------- |
+| Interactive Claude Desktop / web user. | Headless agent, custom integration.     |
+| Need `buzzabout__ask` (chat tool).     | Only need the thin REST-mirror tools.   |
+| You want per-user audit trail.         | One service-account-style identity.     |
 
-| Scope                | What it allows                                              |
-| -------------------- | ----------------------------------------------------------- |
-| `topics:read`        | List existing topics. Required for the simplest workflows.  |
-| `topics:write`       | Create / update topics.                                     |
-| `analyses:read`      | Read finished analyses you've already kicked off.           |
-| `analyses:write`     | Run new analyses against any readable topic.                |
-| `mentions:read`      | Pull cited mentions for an analysis.                        |
-
-A "read-only" key (`topics:read`, `analyses:read`, `mentions:read`) is
-a safe default for casual exploration.
+`buzzabout__ask` impersonates the authenticated user against the AI
+assistant chat backend, so it only works with OAuth. API-key callers
+attempting `buzzabout__ask` get a structured `forbidden` error.
 
 ## Troubleshooting
 
 <Callout type="warn" title="Server not showing up">
-  **Desktop:** Confirm `claude_desktop_config.json` is valid JSON
-  (Claude logs to `~/Library/Logs/Claude/main.log` on macOS). A common
-  mistake is pasting the snippet outside an existing `mcpServers`
-  block.
+  **Desktop:** confirm `claude_desktop_config.json` is valid JSON
+  (Claude logs to `~/Library/Logs/Claude/main.log` on macOS). Common
+  mistake: pasting the snippet outside the existing `mcpServers` block.
 
-  **Web:** Make sure your workspace plan includes "Custom integrations"
-  — Free / Pro accounts don't see the option, only Team / Enterprise.
+  **Web:** make sure your workspace plan includes "Custom integrations".
+  Free / Pro accounts don't see the option, only Team / Enterprise.
 </Callout>
 
 If the tools list is empty, the most likely causes are:
 
-1. **Bad API key** — the server returns 401 on every call. Re-issue and
-   re-paste it.
-2. **Outdated `@buzzabout/mcp-server`** — Claude pins the npm version on
-   first install. Run `npx clear-npx-cache` and restart Claude.
-3. **Network proxy / firewall** — the server needs outbound HTTPS to
-   `api.buzzabout.ai`.
+1. **OAuth token revoked** — sign out and back in via Claude's
+   integration settings.
+2. **Network proxy / firewall** — outbound HTTPS to
+   `api.buzzabout.ai/mcp` is blocked.
+3. **Account doesn't have access** — the Buzzabout account hitting
+   OAuth must be on a plan with API access.
 
-Still stuck? Open a thread in [the support channel](mailto:support@buzzabout.ai).
+Still stuck? Mail [support@buzzabout.ai](mailto:support@buzzabout.ai)
+with the request id from any failed call.
