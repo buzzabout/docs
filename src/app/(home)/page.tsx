@@ -37,14 +37,14 @@ export default function HomePage() {
 
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
         <Link
-          href="/docs/getting-started/quickstart"
+          href="/getting-started/quickstart"
           className="inline-flex h-11 items-center gap-2 rounded-xl bg-fd-primary px-5 text-sm font-medium text-fd-primary-foreground transition hover:opacity-90"
         >
           Quickstart
           <ArrowRightIcon className="size-4" />
         </Link>
         <Link
-          href="/docs"
+          href="/getting-started/quickstart"
           className="inline-flex h-11 items-center gap-2 rounded-xl border bg-fd-card px-5 text-sm font-medium hover:bg-fd-accent"
         >
           Browse docs
@@ -53,7 +53,7 @@ export default function HomePage() {
 
       <div className="mt-16 grid w-full max-w-3xl grid-cols-1 gap-3 sm:grid-cols-3">
         <Link
-          href="/docs/tutorials/first-analysis"
+          href="/tutorials/first-analysis"
           className="group flex flex-col gap-2 rounded-2xl border bg-fd-card p-5 transition hover:border-fd-primary/40 hover:shadow-md"
         >
           <BookOpenIcon className="size-5 text-fd-primary" />
@@ -63,7 +63,7 @@ export default function HomePage() {
           </p>
         </Link>
         <Link
-          href="/docs/mcp/overview"
+          href="/mcp/overview"
           className="group flex flex-col gap-2 rounded-2xl border bg-fd-card p-5 transition hover:border-fd-primary/40 hover:shadow-md"
         >
           <PlugIcon className="size-5 text-fd-primary" />
@@ -73,7 +73,7 @@ export default function HomePage() {
           </p>
         </Link>
         <Link
-          href="/docs/api/overview"
+          href="/api/overview"
           className="group flex flex-col gap-2 rounded-2xl border bg-fd-card p-5 transition hover:border-fd-primary/40 hover:shadow-md"
         >
           <TerminalIcon className="size-5 text-fd-primary" />
