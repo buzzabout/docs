@@ -1,20 +1,20 @@
 ---
 title: API overview
-description: A quick map of the buzzabout REST API — base URL, content type, error model, and where to find each endpoint.
+description: REST surface map — base URL, response envelope, error model, pagination, and account scoping.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 import { Cards, Card } from 'fumadocs-ui/components/card';
-import { Key, Gauge, Terminal, Plug } from 'lucide-react';
+import { Database, Users, MessageSquare, UserCircle } from 'lucide-react';
 
-The buzzabout REST API is a thin layer over the same primitives the web
-app uses. Everything you can do in the product, you can do through this
-API.
+The Buzzabout REST API is a thin layer over the same primitives the
+web app uses. Everything you can do in the product, you can do through
+this API.
 
 <Callout type="warn" title="Beta">
-  The API is in beta. The shape is stable for `topics`, `analyses`, and
-  `mentions`, but newer endpoints may change. We'll bump the URL prefix
-  from `/v1` to `/v2` before we make breaking changes.
+  The API is stable for `datasets`, `mentions`, `audience_datasets`,
+  and `audience_profiles`. Newer endpoints may change. We'll bump the
+  URL prefix from `/v1` to `/v2` before any breaking change.
 </Callout>
 
 ## Base URL
@@ -26,58 +26,132 @@ https://api.buzzabout.ai
 All endpoints live under `/v1`. Examples in these docs use absolute
 URLs so they're easy to copy.
 
-## Content type
+## Authentication
 
-JSON in, JSON out. Send `Content-Type: application/json` on any request
-that has a body.
+Every request needs an `x-api-key` header:
 
-```http title="example request"
-POST /v1/analyses HTTP/1.1
-Host: api.buzzabout.ai
-Authorization: Bearer sk_live_...
-Content-Type: application/json
-
-{ "topic_id": "topic_01H...", "kind": "pattern_match" }
+```http
+x-api-key: bz_live_...
 ```
 
-## Error model
+See [authentication](/getting-started/auth) for key lifecycle, OAuth,
+and headless MCP.
 
-Errors come back with a non-2xx status and a JSON body shaped like:
+## Content type
 
-```json title="error.json"
+JSON in, JSON out. Send `Content-Type: application/json` on any
+request that has a body.
+
+## Response envelope
+
+Every response is wrapped in a discriminated envelope. The top-level
+`status` field tells you which shape you got:
+
+```json title="success — single resource"
 {
-  "error": {
-    "type": "invalid_request",
-    "message": "platforms must contain at least one element",
-    "param": "platforms",
-    "request_id": "req_01H..."
-  }
+  "status": "success",
+  "data": { "...": "..." }
 }
 ```
 
-| HTTP | `error.type`         | What it means                                                  |
-| ---- | -------------------- | -------------------------------------------------------------- |
-| 400  | `invalid_request`    | Body or query parameters are malformed.                        |
-| 401  | `unauthenticated`    | Missing or bad `Authorization` header.                         |
-| 403  | `forbidden`          | The key is valid but not scoped for this resource / action.    |
-| 404  | `not_found`          | The resource doesn't exist or this key can't see it.           |
-| 409  | `conflict`           | The request collides with current state (e.g. duplicate name). |
-| 429  | `rate_limited`       | See [Rate limits](/docs/api/rate-limits).                      |
-| 5xx  | `server_error`       | Something on our end. Include `request_id` when reporting.     |
+```json title="success — paginated list"
+{
+  "status": "success",
+  "data": [ { "...": "..." }, { "...": "..." } ],
+  "has_next": true,
+  "cursor": "eyJjcmVhdGVkX2F0IjogMTcxNDU2NDg5MCwgImlkIjogImRzXzAxSCJ9"
+}
+```
 
-## Where to look next
+```json title="error"
+{
+  "status": "client_error",
+  "error_code": "dataset_not_found",
+  "detail": "Dataset not found",
+  "transient": false
+}
+```
+
+`status` collapses the HTTP status class:
+
+| HTTP class | `status`        |
+| ---------- | --------------- |
+| 1xx        | `info`          |
+| 2xx        | `success`       |
+| 3xx        | `redirect`      |
+| 4xx        | `client_error`  |
+| 5xx        | `server_error`  |
+
+Successful 2xx responses always carry a `data` field. Error responses
+carry `error_code`, `detail`, and `transient` (when `true`, retrying
+the same request later may succeed).
+
+A `204 No Content` (used for `DELETE /v1/datasets/{id}` and
+`DELETE /v1/audience_datasets/{id}`) returns an empty body.
+
+## Pagination
+
+List endpoints use cursor-based pagination. Pass `limit` and `cursor`:
+
+| Parameter | Type    | Default                                  | Notes                                   |
+| --------- | ------- | ---------------------------------------- | --------------------------------------- |
+| `limit`   | integer | `10` for resources, `20` for mentions / profiles | 1–100. |
+| `cursor`  | string  | `null`                                   | Opaque base64url. From `cursor` in a previous response. |
+| `order`   | enum    | `desc`                                   | `asc` or `desc` (where supported).      |
+
+The response includes `has_next: bool` and `cursor: string \| null`.
+When `has_next` is `false`, the cursor is `null` and the page is the
+last one.
+
+Cursors are sort-aware on `mentions` / `audience_profiles`. If you
+change the `sort` field between calls, request a fresh page (don't pass
+the old cursor — it'll fail validation).
+
+## Errors
+
+| HTTP | `error_code` examples                              | What it means                                     |
+| ---- | -------------------------------------------------- | ------------------------------------------------- |
+| 400  | `bad_request`, `source_dataset_has_no_completed_run` | Bad request semantics or insufficient state.      |
+| 401  | `unauthorized`                                     | Missing or invalid `x-api-key`.                   |
+| 402  | `insufficient_credits_dataset_run`                 | Account has no credits left for this operation.   |
+| 404  | `dataset_not_found`, `audience_dataset_not_found`  | Resource doesn't exist or isn't owned by the key. |
+| 409  | `audience_dataset_run_already_in_flight`           | A pending / working run blocks a new one.         |
+| 422  | `unprocessable_entity`, `invalid_scraping_target_url` | Body or query parameters are malformed.        |
+| 429  | `too_many_requests`                                | See [rate limits](/api/rate-limits).              |
+| 5xx  | `internal_server_error`                            | Something on our end. Reachable by `transient: true`. |
+
+The `error_code` is stable — match on it, not on the human-readable
+`detail`.
+
+## Account scoping
+
+Every API key is tied to one account. All read and write paths are
+scoped to that account:
+
+- Resources you create (datasets, audience datasets) belong to your
+  account; nobody else can see or modify them.
+- Resource ids on inputs (e.g. `dataset_ids`, `audience_dataset_ids`,
+  `source_dataset_id`) must reference resources you own — otherwise the
+  endpoint returns a `404` instead of a `403` (existence is hidden).
+- The global mentions and audience-profiles endpoints implicitly scope
+  to your account; passing `dataset_ids` / `audience_dataset_ids` is
+  optional and only narrows further.
+
+## Endpoint groups
 
 <Cards>
-  <Card icon={<Key className="text-fd-primary" />} title="Authentication" href="/docs/api/authentication">
-    How API keys work, scopes, rotation, and how to test a key.
+  <Card icon={<Database className="text-fd-primary" />} title="Datasets" href="/api/endpoints/datasets">
+    Container CRUD plus runs — create, list, retrieve, update, delete,
+    and trigger / poll runs.
   </Card>
-  <Card icon={<Gauge className="text-fd-primary" />} title="Rate limits" href="/docs/api/rate-limits">
-    Per-key quotas and what `429` looks like in the wild.
+  <Card icon={<Users className="text-fd-primary" />} title="Audience datasets" href="/api/endpoints/audience-datasets">
+    Same shape as datasets, scoped to creator / commenter profile
+    collection.
   </Card>
-  <Card icon={<Terminal className="text-fd-primary" />} title="Endpoints" href="/docs/api/endpoints/create-analysis">
-    Per-endpoint reference. Right now: topics, analyses, mentions.
+  <Card icon={<MessageSquare className="text-fd-primary" />} title="Mentions" href="/api/endpoints/mentions">
+    `POST /v1/mentions` — global, filterable, paginated.
   </Card>
-  <Card icon={<Plug className="text-fd-primary" />} title="MCP equivalent" href="/docs/mcp/overview">
-    Same workflow, driven by an LLM client.
+  <Card icon={<UserCircle className="text-fd-primary" />} title="Audience profiles" href="/api/endpoints/audience-profiles">
+    `POST /v1/audience_profiles` — global, filterable, paginated.
   </Card>
 </Cards>

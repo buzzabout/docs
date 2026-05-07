@@ -1,0 +1,169 @@
+---
+title: Audience profiles
+description: POST /v1/audience_profiles — global, filterable, paginated profiles across one or more audience datasets.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The audience-profiles endpoint is **global**: one call returns profiles
+from every audience dataset owned by the calling account. Pass
+`audience_dataset_ids` to scope; omit it to span everything.
+
+| Method | Path                     | Auth                |
+| ------ | ------------------------ | ------------------- |
+| POST   | `/v1/audience_profiles`  | `x-api-key` header. |
+
+Profiles are deduped by `(source, username)` keeping the most-recent
+row across runs.
+
+## Request body
+
+```json title="minimal"
+{
+  "audience_dataset_ids": ["ad_01H..."],
+  "limit": 20
+}
+```
+
+```json title="filtered + sorted"
+{
+  "audience_dataset_ids": ["ad_01H..."],
+  "sort": "follower_count",
+  "order": "desc",
+  "limit": 50,
+  "filters": [
+    [
+      { "type": "is_verified", "value": true },
+      { "type": "follower_count", "operator": { "type": "greater_than", "value": 10000 } }
+    ]
+  ]
+}
+```
+
+| Field                | Type    | Required | Default | Notes                                                    |
+| -------------------- | ------- | -------- | ------- | -------------------------------------------------------- |
+| audience_dataset_ids | array   | no       | null    | Scope. When omitted, spans every audience dataset on the account. |
+| sort                 | enum    | no       | `date`  | See sort table below.                                    |
+| order                | enum    | no       | `desc`  | `asc` or `desc`.                                         |
+| cursor               | string  | no       | null    | Opaque cursor; sort-aware.                               |
+| limit                | integer | no       | 20      | 1–100.                                                   |
+| filters              | array   | no       | null    | OR of AND-groups (max 10 filters total).                 |
+
+### Sort fields
+
+`sort` accepts: `date`, `follower_count`, `following_count`,
+`content_count`, `engagement_rate`, `score`, `authenticity_score`,
+`creator_tier`.
+
+### Filters
+
+| Type                   | Shape                                                                                  |
+| ---------------------- | -------------------------------------------------------------------------------------- |
+| `source`               | `{ "values": ["reddit", "tiktok", ...] }`                                              |
+| `is_verified`          | `{ "value": true \| false }`                                                          |
+| `location_country`     | `{ "values": ["United States", "United Kingdom", ...] }` — free-text country names as stored on the profile. |
+| `creator_tier`         | `{ "values": ["nano", "micro", ...] }`                                                |
+| `content_niche`        | `{ "operator": "any_of", "values": [...] }`                                           |
+| `interest_clusters`    | `{ "operator": "any_of", "values": [...] }`                                           |
+| `follower_count`       | `{ "operator": { "type": "greater_than"\|"less_than"\|"in_range", ... } }`            |
+| `engagement_rate`      | `{ "operator": { "type": "greater_than"\|"less_than"\|"in_range", ... } }`            |
+| `authenticity_score`   | `{ "operator": { "type": "greater_than"\|"less_than"\|"in_range", ... } }`            |
+
+The range operators take a single `value` (`greater_than`, `less_than`)
+or `min_value` + `max_value` (`in_range`).
+
+## Response — 200 OK
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "ap_01H...",
+      "run_id": "adr_01H...",
+      "source": "tiktok",
+      "username": "sipdaily",
+      "display_name": "Sip Daily",
+      "avatar": { "url": "https://...", "width": 200, "height": 200 },
+      "bio": "Coffee notes, every morning.",
+      "external_link": "https://sipdaily.com",
+      "is_verified": true,
+      "follower_count": 142000,
+      "following_count": 80,
+      "content_count": 421,
+      "engagement_rate": 0.052,
+      "posting_cadence": "daily",
+      "creator_tier": "micro",
+      "location_country": "United States",
+      "location_city": "Brooklyn",
+      "primary_language": "en",
+      "authenticity_score": 87,
+      "authenticity_reason": "Consistent voice, low-frequency promotion.",
+      "aesthetic": "minimalist",
+      "communication_tone": "casual",
+      "content_niche": ["coffee", "lifestyle"],
+      "interest_clusters": ["specialty coffee", "third-wave roasters"],
+      "brand_affinities": ["Stumptown", "Blue Bottle"],
+      "occupation": "barista",
+      "industry": "food & beverage",
+      "ocean": { "openness": 0.72, "...": "..." },
+      "summary": "Brooklyn-based barista posting daily coffee notes...",
+      "score": 84,
+      "platform_metadata": { "...": "..." },
+      "created_at": 1714566010
+    }
+  ],
+  "has_next": true,
+  "cursor": "MTQyMDAwOmFwXzAxSA"
+}
+```
+
+Most LLM-derived fields (`creator_tier`, `aesthetic`, `summary`,
+`ocean`, etc.) are `null` when audience analysis didn't enrich the
+profile yet — typically because the run is still in flight.
+
+## Errors
+
+```json title="404 audience_dataset_not_found"
+{
+  "status": "client_error",
+  "error_code": "audience_dataset_not_found",
+  "detail": "Audience dataset not found",
+  "transient": false
+}
+```
+
+Returned when any id in `audience_dataset_ids` doesn't exist or isn't
+owned by the calling account.
+
+```json title="422 invalid cursor"
+{
+  "status": "client_error",
+  "error_code": "unprocessable_entity",
+  "detail": {
+    "message": "Invalid request data",
+    "errors": { "body.cursor": "Invalid cursor value" }
+  },
+  "transient": false
+}
+```
+
+## cURL
+
+```bash
+curl -X POST https://api.buzzabout.ai/v1/audience_profiles \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "audience_dataset_ids": ["ad_01H..."],
+    "sort": "follower_count",
+    "order": "desc",
+    "limit": 20
+  }'
+```
+
+<Callout type="info">
+  Cursors encode the sort dimension. Don't reuse a cursor from a `sort:
+  follower_count` page on a `sort: engagement_rate` request — request
+  the first page of the new ordering instead.
+</Callout>

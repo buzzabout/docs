@@ -1,90 +1,125 @@
 ---
 title: MCP overview
-description: How buzzabout exposes itself as an MCP server, what tools are available, and how the editorial loop works inside Claude or ChatGPT.
+description: How Buzzabout exposes itself as an MCP server, what tools are available, and how to authenticate.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
 import { Cards, Card } from 'fumadocs-ui/components/card';
-import { MessageCircle, Rocket, FileText, Check } from 'lucide-react';
+import { Plug, Key, MessageCircle, Wrench } from 'lucide-react';
 
-The buzzabout **MCP server** lets you treat the platform as a tool inside
-any [Model Context Protocol](https://modelcontextprotocol.io/) client —
-Claude, ChatGPT, Cursor, or your own agent. Same workflow as the API,
-but the LLM is the caller.
+The Buzzabout **MCP server** exposes the same primitives as the REST
+API as a set of tools that any [Model Context Protocol](https://modelcontextprotocol.io/)
+client can call — Claude Desktop, Claude on the web, custom agents, or
+your own integration.
 
-## What you can do with it
-
-<Cards>
-  <Card icon={<MessageCircle className="text-fd-primary" />} title="Brainstorm in chat">
-    Ask Claude or ChatGPT to scope a research question. The model
-    proposes the topic, hooks, and analysis kind without leaving the
-    conversation.
-  </Card>
-  <Card icon={<Rocket className="text-fd-primary" />} title="Run analyses">
-    Once the brief is clear, the model calls our `run_analysis` tool and
-    streams progress back to you.
-  </Card>
-  <Card icon={<FileText className="text-fd-primary" />} title="Cite real mentions">
-    Every claim the model makes is grounded in mentions returned by the
-    `fetch_mentions` tool — you can verify any line back to the source.
-  </Card>
-  <Card icon={<Check className="text-fd-primary" />} title="Stay in the editorial loop">
-    The MCP integration is designed to *propose, not publish*. Approvals
-    still happen in the buzzabout web app via the editorial workflow.
-  </Card>
-</Cards>
-
-## How it fits together
+## Transport
 
 ```text
-┌─────────────┐                      ┌──────────────────┐
-│   Claude    │  ──── MCP tools ───▶ │  buzzabout MCP   │
-│  / ChatGPT  │                      │     server       │
-└─────────────┘                      └────────┬─────────┘
-                                              │
-                                              ▼
-                                     ┌────────────────┐
-                                     │ buzzabout REST │
-                                     │      API       │
-                                     └────────────────┘
+https://api.buzzabout.ai/mcp
 ```
 
-The MCP server is a thin shell over the REST API. Tools that exist in
-the API exist as MCP tools too, with the same parameters.
+Streamable HTTP transport (the modern MCP transport — no separate SSE
+endpoint). One URL handles tool listing, tool calls, and OAuth
+discovery.
+
+## Authentication
+
+Two paths:
+
+- **`x-api-key`** — same key as the REST API. Header is checked first
+  on every request. Best for headless agents.
+- **OAuth 2.1** — interactive clients (Claude Desktop, Claude web)
+  exchange an authorisation code for a JWT. The server issues the JWT
+  on the user's behalf.
+
+The `Authorization: Bearer <jwt>` and `x-api-key` paths share the
+same `User` extraction — every tool sees the same authenticated user
+regardless of how the request authenticated.
+
+<Callout type="warn" title="One exception: buzzabout__ask">
+  `buzzabout__ask` impersonates a user against the AI assistant chat
+  backend, so it requires the OAuth/JWT path. API-key callers get a
+  structured `forbidden` error. All ten other tools work fine with
+  either auth method.
+</Callout>
 
 ## What's exposed
 
-| Tool name           | Purpose                                                            |
-| ------------------- | ------------------------------------------------------------------ |
-| `list_topics`       | List the topics in your workspace.                                 |
-| `create_topic`      | Create a new topic by name + platforms.                            |
-| `run_analysis`      | Kick off any analysis kind (`pattern_match`, `sentiment_pulse`, …).|
-| `fetch_mentions`    | Pull raw mentions citing a pattern, with snippets and URLs.        |
-| `summarize_brief`   | Distil an analysis into a one-page brief in your house style.      |
+Eleven tools, namespaced `buzzabout__*` to avoid collisions in hosts
+that connect multiple MCP servers.
 
-See [Tools reference / `run_analysis`](/docs/mcp/tools/run_analysis) for
-per-tool input/output schemas.
+<Cards>
+  <Card icon={<Wrench className="text-fd-primary" />} title="Tool reference" href="/mcp/tools/reference">
+    All 11 tools at a glance — name, purpose, required parameters.
+  </Card>
+  <Card icon={<MessageCircle className="text-fd-primary" />} title="buzzabout__ask" href="/mcp/tools/ask">
+    The chat tool — hand a prompt to the AI assistant, get markdown +
+    structured references back.
+  </Card>
+  <Card icon={<Plug className="text-fd-primary" />} title="Connect Claude" href="/mcp/claude">
+    Install in Claude Desktop / Claude web with OAuth.
+  </Card>
+  <Card icon={<Key className="text-fd-primary" />} title="Headless agent install" href="/mcp/api-key">
+    Wire the MCP server into a custom agent using `x-api-key`.
+  </Card>
+</Cards>
 
-## Connecting
+## Tool selection model
 
-<Callout type="warn" title="MCP clients differ">
-  MCP is a young protocol and clients differ in how they expose servers.
-  Pick the guide that matches the client you use.
-</Callout>
+Tools split cleanly into three groups:
 
-- [**Connect Claude (desktop / web)**](/docs/mcp/claude) — config snippet
-  for Claude's MCP settings.
-- ChatGPT (Plus / Team / Enterprise) — instructions land here once
-  OpenAI ships their public MCP client.
-- Cursor / Continue / your own agent — generic SSE endpoint:
-  `https://mcp.buzzabout.ai/v1/sse`. Pass your API key as the
-  `Authorization: Bearer …` header.
+1. **Thin REST-mirror tools** — `buzzabout__list_datasets`,
+   `buzzabout__get_dataset`, `buzzabout__create_dataset`,
+   `buzzabout__create_dataset_run`, `buzzabout__get_dataset_run`,
+   `buzzabout__create_audience_dataset`,
+   `buzzabout__create_audience_dataset_run`,
+   `buzzabout__get_audience_dataset_run`,
+   `buzzabout__list_mentions`, `buzzabout__list_audience_profiles`.
+2. **Chat tool** — `buzzabout__ask` delegates to the AI assistant for
+   conversational analysis.
+3. (No PATCH / DELETE tools — admin actions stay in the web app. No
+   `list_audience_datasets` / `list_*_runs` — `buzzabout__ask` covers
+   those use cases conversationally.)
+
+## Async runs
+
+Tools that kick off async work
+(`buzzabout__create_dataset_run`,
+`buzzabout__create_audience_dataset_run`) return immediately:
+
+```json
+{
+  "run_id": "dr_01H...",
+  "dataset_id": "ds_01H...",
+  "status": "pending",
+  "next_step": "Call buzzabout__get_dataset_run with this run_id to poll completion.",
+  "created_at": "2026-05-01T12:00:30Z"
+}
+```
+
+The host LLM polls `buzzabout__get_dataset_run` /
+`buzzabout__get_audience_dataset_run` until `status.type` is
+`completed` or `failed`.
 
 ## When to use MCP vs the API
 
-Use **MCP** when the request is interactive — a marketer talking to
-Claude about a campaign, a researcher iterating on a question.
+| Use MCP                                          | Use REST                                   |
+| ------------------------------------------------ | ------------------------------------------ |
+| Interactive — a person talking to Claude.        | Batch — scheduled job, cron-driven sync.   |
+| The host LLM does the orchestration.             | You're writing the orchestration.          |
+| You want `buzzabout__ask` to drive the workflow. | You only need primitive CRUD.              |
 
-Use the **REST API** for batch jobs, scheduled ingestion, or anything
-that runs without a human-in-the-loop. The endpoints are the same; the
-delivery is different.
+Both surfaces are backed by the same primitives, so hybrid setups (e.g.
+schedule the run via REST, ask Claude to summarise via MCP) work
+naturally.
+
+## Next
+
+- [Tools reference](/mcp/tools/reference) — the eleven tools, table
+  form.
+- [`buzzabout__ask` deep-dive](/mcp/tools/ask) — input shape, response
+  shape, references.
+- [Connect Claude](/mcp/claude) — install in Claude Desktop / web.
+- [Headless / API key](/mcp/api-key) — wire MCP into your own agent.
+- [Recommended dev tools](/mcp/dev-tools) — Agentation and other tools
+  that pair well with Buzzabout MCP.

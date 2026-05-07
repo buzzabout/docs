@@ -1,0 +1,139 @@
+---
+title: buzzabout__ask
+description: Hand a prompt to the Buzzabout AI assistant and get markdown plus structured references back.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+`buzzabout__ask` is the chat tool — a thin bridge between an MCP host
+and the Buzzabout AI assistant. Hand it a natural-language prompt; it
+streams the response off the assistant, aggregates the markdown text,
+collects the structured side-effects (datasets created, audience
+datasets created, research previews generated, patterns detected), and
+returns one tool result.
+
+```text
+buzzabout__ask({ prompt, chat_id? }) → { chat_id, message_id, text, references }
+```
+
+## Auth
+
+`buzzabout__ask` requires the **OAuth/JWT** auth path. API-key callers
+get a structured `forbidden` error — the AI assistant chat backend
+operates on user identity, and an API key isn't bound to one.
+
+```json title="API-key error"
+{
+  "error": {
+    "code": "forbidden",
+    "message": "buzzabout__ask requires user JWT auth; api-key callers cannot impersonate a user against the AI assistant.",
+    "status": 403
+  }
+}
+```
+
+See [Connect Claude](/mcp/claude) for the OAuth install.
+
+## Input
+
+| Field    | Type   | Required | Notes                                                                                       |
+| -------- | ------ | -------- | ------------------------------------------------------------------------------------------- |
+| prompt   | string | yes      | Natural-language input. The assistant interprets it and may call internal tools as needed. |
+| chat_id  | string | no       | Continue an existing chat. When omitted, a new chat is created and its id is returned.      |
+
+There's no built-in chat discovery — host LLMs only have a `chat_id`
+when a prior `buzzabout__ask` call returned one in the same host
+session. Resuming a web-app-started chat is a v1.5 follow-up.
+
+## Output
+
+```json title="success"
+{
+  "chat_id": "chat_01H...",
+  "message_id": "msg_01H...",
+  "text": "## Top three hooks across the cold-brew dataset...",
+  "references": [
+    { "type": "dataset", "id": "ds_01H..." },
+    { "type": "audience_dataset", "id": "ad_01H..." },
+    { "type": "research_preview", "id": "rp_01H..." },
+    { "type": "pattern", "id": "pat_01H..." }
+  ]
+}
+```
+
+| Field      | Type   | Notes                                                                                                |
+| ---------- | ------ | ---------------------------------------------------------------------------------------------------- |
+| chat_id    | string | Pass back to a follow-up `buzzabout__ask` call to continue the conversation.                         |
+| message_id | string | Identifier for this turn's reply. Useful for log correlation.                                        |
+| text       | string | The assistant's full markdown response (no OpenUI primitives — `output_format=markdown` is forced).  |
+| references | array  | Side-effects produced by the response (see [Reference types](#reference-types) below).               |
+
+The assistant runs in **markdown mode** when called via MCP. Charts,
+tables, and lists come back as plain markdown — no React components,
+no custom widgets.
+
+## Reference types
+
+Every `references[]` entry is a `{ type, id }` pair you can use to
+dereference the resource the assistant produced or referenced.
+
+| `type`              | What it points to                            | How to expand                                                |
+| ------------------- | -------------------------------------------- | ------------------------------------------------------------ |
+| `dataset`           | A Buzzabout dataset.                         | [`buzzabout__get_dataset`](/mcp/tools/reference) or [`GET /v1/datasets/{id}`](/api/endpoints/datasets). |
+| `audience_dataset`  | An audience-dataset container.               | The container has no public REST `GET` — pass the id back as `audience_dataset_ids` to [`buzzabout__list_audience_profiles`](/mcp/tools/reference) to read the profiles. |
+| `research_preview`  | A research-preview snapshot.                 | Stable id; pass to follow-up `buzzabout__ask` calls if you want the assistant to reason over the same snapshot. |
+| `pattern`           | A pattern produced by pattern detection.     | Stable id; pass to follow-up `buzzabout__ask` calls. The assistant can summarise individual items in the pattern conversationally. |
+
+<Callout type="info">
+  The `pattern` reference includes a stable id you can pass to
+  subsequent `buzzabout__ask` calls in your agent. Pattern detection
+  runs are also resolvable via internal retrieval endpoints, but those
+  aren't part of the public surface — agents should treat the
+  `pattern` id as opaque and use the assistant to explore its
+  contents.
+</Callout>
+
+References are deduped — the same `(type, id)` only appears once per
+response.
+
+## Behaviour notes
+
+- `buzzabout__ask` **aggregates**. The MCP server consumes the
+  assistant's SSE stream internally and returns one result when the
+  stream closes. There's no SSE pass-through to the host LLM.
+- A reply can take 5–30 seconds for short prompts, longer if the
+  assistant kicks off a dataset run or pattern detection. Configure
+  your MCP host's tool timeout to ≥ 600 seconds.
+- Chats created via MCP appear in the web app under the same chats
+  list as user-created chats — there's no `source: mcp` separation.
+
+## Example session
+
+A typical multi-turn agent loop:
+
+```text
+1. host: buzzabout__ask({ prompt: "Find the top hooks in cold-brew TikToks this week" })
+   → { chat_id: "chat_01H...", text: "...", references: [{ type: "dataset", id: "ds_01H..." }] }
+
+2. host: buzzabout__list_mentions({ dataset_ids: ["ds_01H..."], sort: "engagement_rate", limit: 5 })
+   → { content: [...], cursor: null }
+
+3. host: buzzabout__ask({
+       chat_id: "chat_01H...",
+       prompt: "Summarise the top 5 by hook framing"
+     })
+   → { chat_id: "chat_01H...", text: "...", references: [...] }
+```
+
+Note step 1 returned a `dataset` reference — the assistant created a
+dataset and ran it, then summarised. Step 2 used that id to read the
+mentions directly via REST-mirror. Step 3 continued the same chat by
+passing `chat_id` back, so the assistant retained context.
+
+## Errors
+
+| `error.code` | When                                                                            |
+| ------------ | ------------------------------------------------------------------------------- |
+| `forbidden`  | API-key auth path. Reconnect via OAuth.                                         |
+| `not_found`  | `chat_id` provided but doesn't exist or isn't owned by the authenticated user.  |
+| Network-layer (transport-level error) | Timeout, OAuth token expired (refresh via the host's reconnect flow). |

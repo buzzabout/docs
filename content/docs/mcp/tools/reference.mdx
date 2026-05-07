@@ -1,0 +1,134 @@
+---
+title: Tools reference
+description: Every buzzabout__* tool — name, purpose, required parameters, and the shape it returns.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+The MCP server exposes eleven tools. Ten are thin wrappers over the
+public REST API; the eleventh, `buzzabout__ask`, delegates to the AI
+assistant. Tool names are namespaced `buzzabout__*` to avoid
+collisions in hosts that connect multiple MCP servers.
+
+All tools require auth ([Connect Claude](/mcp/claude) for OAuth,
+[Headless agents](/mcp/api-key) for API key). `buzzabout__ask` requires
+OAuth specifically.
+
+## Datasets
+
+| Tool                                | Required parameters                           | Returns                                              |
+| ----------------------------------- | --------------------------------------------- | ---------------------------------------------------- |
+| `buzzabout__list_datasets`          | —                                             | `{ content: Dataset[], cursor: string \| null }`     |
+| `buzzabout__get_dataset`            | `dataset_id`                                  | `Dataset` or `{ error }`                             |
+| `buzzabout__create_dataset`         | `name`                                        | `{ id, name, created_at }`                           |
+| `buzzabout__create_dataset_run`     | `dataset_id`, `search_query`                  | `{ run_id, dataset_id, status: "pending", next_step, created_at }` |
+| `buzzabout__get_dataset_run`        | `dataset_id`, `run_id`                        | `DatasetRun` or `{ error }`                          |
+
+`search_query` is a discriminated union — `{ type: "prompt", sources, search_query }` for keyword search, or `{ type: "url", source_urls }` for direct URL scraping. Optional parameters mirror [POST /v1/datasets/&#123;id&#125;/runs](/api/endpoints/datasets) (`count`, `num_comments_per_post`, `date_range`, `country_code`, `language`, `enable_visual_recognition`, `enable_transcribing`, `content_analysis_actions`).
+
+## Audience datasets
+
+| Tool                                          | Required parameters                                    | Returns                                                  |
+| --------------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------- |
+| `buzzabout__create_audience_dataset`          | `name`                                                 | `{ id, name, created_at }`                               |
+| `buzzabout__create_audience_dataset_run`      | `audience_dataset_id`, `source_dataset_id`             | `{ run_id, audience_dataset_id, source_dataset_id, status: "pending", next_step, created_at }` |
+| `buzzabout__get_audience_dataset_run`         | `audience_dataset_id`, `run_id`                        | `AudienceDatasetRun` or `{ error }`                      |
+
+`total_profile_count` is optional on `create_audience_dataset_run`
+(default 850, range 1–2000). The tool intentionally trims the surface:
+no `list_audience_datasets`, no `get_audience_dataset`, no list-runs —
+those use cases are covered by `buzzabout__ask` conversationally.
+
+## Reads
+
+| Tool                                | Required parameters | Returns                                                  |
+| ----------------------------------- | ------------------- | -------------------------------------------------------- |
+| `buzzabout__list_mentions`          | —                   | `{ content: Mention[], cursor: string \| null }`         |
+| `buzzabout__list_audience_profiles` | —                   | `{ content: Profile[], cursor: string \| null }`         |
+
+Both default to scoping by all account-owned resources. Pass
+`dataset_ids` (resp. `audience_dataset_ids`) to narrow. Filters, sort,
+order, cursor, limit mirror the
+[mentions](/api/endpoints/mentions) /
+[profiles](/api/endpoints/audience-profiles) REST endpoints.
+
+## Chat
+
+| Tool             | Required parameters | Returns                                                         |
+| ---------------- | ------------------- | --------------------------------------------------------------- |
+| `buzzabout__ask` | `prompt`            | `{ chat_id, message_id, text, references }` or `{ error }` (forbidden for API-key callers) |
+
+`chat_id` is optional — pass it from a prior `buzzabout__ask` response
+to continue the same chat. See [the deep-dive](/mcp/tools/ask) for
+input shape, response shape, and how to expand `references`.
+
+## Pagination model
+
+The five `list_*` tools (datasets, mentions, audience profiles —
+plus internal pagination on the others) return:
+
+```json
+{
+  "content": [ /* rows */ ],
+  "cursor": "eyJ...="
+}
+```
+
+Pass the cursor back as the `cursor` argument to fetch the next page.
+A `null` cursor means you've hit the end. Cursors on
+`buzzabout__list_mentions` and `buzzabout__list_audience_profiles`
+encode the sort dimension, so don't reuse a cursor across `sort`
+changes.
+
+## Polling async runs
+
+`buzzabout__create_dataset_run` and
+`buzzabout__create_audience_dataset_run` return:
+
+```json
+{
+  "run_id": "dr_01H...",
+  "status": "pending",
+  "next_step": "Call buzzabout__get_dataset_run with this run_id to poll completion."
+}
+```
+
+The host LLM polls `buzzabout__get_dataset_run` /
+`buzzabout__get_audience_dataset_run` until `status.type` is
+`completed` or `failed`. Each tool's response carries the same
+`status` envelope as the REST API:
+
+```json
+{
+  "status": {
+    "type": "working",
+    "steps": [
+      { "name": "scraping", "completed_at": 1714564890 }
+    ]
+  }
+}
+```
+
+## Error shape
+
+Tool errors come back as a JSON object with an `error` field:
+
+```json
+{
+  "error": {
+    "code": "dataset_not_found",
+    "message": "Dataset not found",
+    "status": 404
+  }
+}
+```
+
+The `code` is stable — match on it. The `message` is for humans.
+`status` mirrors the HTTP status the equivalent REST call would
+return.
+
+<Callout type="info">
+  No `PATCH` or `DELETE` tools exist. Admin actions intentionally stay
+  in the web app — agents can read and create, but a human approves
+  destructive changes.
+</Callout>

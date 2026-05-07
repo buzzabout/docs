@@ -1,0 +1,330 @@
+---
+title: Datasets
+description: Eight endpoints — create, list, retrieve, update, delete a dataset, plus create / list / retrieve runs.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+A **dataset** is a named container of mentions. Runs populate it with
+posts collected across one or more search queries.
+
+All eight endpoints require the `x-api-key` header. Resources are
+scoped to the account that owns the key.
+
+## Endpoint summary
+
+| Method | Path                                              | Purpose                       |
+| ------ | ------------------------------------------------- | ----------------------------- |
+| POST   | `/v1/datasets`                                    | Create a dataset.             |
+| GET    | `/v1/datasets`                                    | List datasets.                |
+| GET    | `/v1/datasets/{dataset_id}`                       | Retrieve a dataset.           |
+| PATCH  | `/v1/datasets/{dataset_id}`                       | Update a dataset (name only). |
+| DELETE | `/v1/datasets/{dataset_id}`                       | Soft-delete a dataset.        |
+| POST   | `/v1/datasets/{dataset_id}/runs`                  | Trigger an async scraping run. |
+| GET    | `/v1/datasets/{dataset_id}/runs`                  | List runs for a dataset.      |
+| GET    | `/v1/datasets/{dataset_id}/runs/{run_id}`         | Retrieve a single run.        |
+
+---
+
+## POST /v1/datasets
+
+Create an empty dataset container.
+
+**Request body**
+
+```json
+{
+  "name": "cold brew"
+}
+```
+
+| Field | Type   | Required | Notes                              |
+| ----- | ------ | -------- | ---------------------------------- |
+| name  | string | yes      | 1–255 characters.                  |
+
+**Response — 201 Created**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "ds_01H...",
+    "name": "cold brew",
+    "created_at": "2026-05-01T12:00:00Z"
+  }
+}
+```
+
+**cURL**
+
+```bash
+curl -X POST https://api.buzzabout.ai/v1/datasets \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "cold brew" }'
+```
+
+---
+
+## GET /v1/datasets
+
+Cursor-paginated list of datasets owned by the account, sorted by
+`created_at`. Soft-deleted datasets are excluded.
+
+**Query parameters**
+
+| Param  | Type    | Default | Notes                            |
+| ------ | ------- | ------- | -------------------------------- |
+| limit  | integer | 10      | 1–100.                           |
+| cursor | string  | null    | Opaque cursor from prior call.   |
+| order  | enum    | desc    | `asc` or `desc`.                 |
+
+**Response — 200 OK**
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": "ds_01H...",
+      "name": "cold brew",
+      "mentions_count": 1247,
+      "created_at": "2026-05-01T12:00:00Z",
+      "updated_at": "2026-05-01T12:30:00Z",
+      "url": "https://app.buzzabout.ai/datasets/ds_01H..."
+    }
+  ],
+  "has_next": false,
+  "cursor": null
+}
+```
+
+---
+
+## GET /v1/datasets/&#123;dataset_id&#125;
+
+Retrieve one dataset.
+
+**Response — 200 OK**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "ds_01H...",
+    "name": "cold brew",
+    "mentions_count": 1247,
+    "created_at": "2026-05-01T12:00:00Z",
+    "updated_at": "2026-05-01T12:30:00Z",
+    "url": "https://app.buzzabout.ai/datasets/ds_01H..."
+  }
+}
+```
+
+**Errors**
+
+```json title="404 dataset_not_found"
+{
+  "status": "client_error",
+  "error_code": "dataset_not_found",
+  "detail": "Dataset not found",
+  "transient": false
+}
+```
+
+---
+
+## PATCH /v1/datasets/&#123;dataset_id&#125;
+
+The only updatable field is `name`. An empty body is a no-op (returns
+the current dataset). Setting `name` to an empty string clears it
+(stores `null`).
+
+**Request body**
+
+```json
+{ "name": "cold brew — Q2" }
+```
+
+**Response — 200 OK** — same shape as `GET /v1/datasets/{id}`.
+
+---
+
+## DELETE /v1/datasets/&#123;dataset_id&#125;
+
+Soft-delete the dataset and all its runs. They no longer appear in list
+results and cannot be retrieved by id afterwards.
+
+**Response — 204 No Content** — empty body.
+
+---
+
+## POST /v1/datasets/&#123;dataset_id&#125;/runs
+
+Kick off an async scraping run. Returns immediately with the run id
+and `pending` status. Poll `GET /v1/datasets/{id}/runs/{run_id}` for
+progress.
+
+**Request body — keyword search**
+
+```json
+{
+  "search_query": {
+    "type": "prompt",
+    "sources": ["reddit", "tiktok", "youtube"],
+    "search_query": "cold brew coffee"
+  },
+  "count": 200,
+  "num_comments_per_post": 10,
+  "country_code": "US"
+}
+```
+
+**Request body — direct URLs**
+
+```json
+{
+  "search_query": {
+    "type": "url",
+    "source_urls": [
+      { "source": "reddit", "url": "https://reddit.com/r/coffee/comments/...", "text": "thread" },
+      { "source": "tiktok", "url": "https://www.tiktok.com/@user/video/..." }
+    ]
+  },
+  "count": 50
+}
+```
+
+| Field                       | Type    | Required | Default | Notes                                          |
+| --------------------------- | ------- | -------- | ------- | ---------------------------------------------- |
+| search_query.type           | enum    | yes      | —       | `prompt` or `url`.                             |
+| search_query.sources        | array   | yes (prompt) | —   | At least one platform.                         |
+| search_query.search_query   | string  | yes (prompt) | —   | 1–5000 characters.                             |
+| search_query.source_urls    | array   | yes (url)    | —   | 1–100 entries, each `{ source, url, text? }`.  |
+| count                       | integer | no       | 200     | 20–500.                                        |
+| num_comments_per_post       | integer | no       | 10      | 0–100.                                         |
+| date_range                  | object  | no       | null    | `{ "from": "YYYY-MM-DD", "to": "YYYY-MM-DD" }`. |
+| country_code                | string  | no       | "US"    | ISO 3166-1 alpha-2.                            |
+| language                    | string  | no       | null    | BCP-47 (e.g. `en`, `fr`).                       |
+| enable_visual_recognition   | bool    | no       | false   |                                                |
+| enable_transcribing         | bool    | no       | false   |                                                |
+| content_analysis_actions    | array   | no       | []      | Subset of `content_category`, `tone_of_voice`, `narrative_structure`, `intent`, `hook`, `mentioned_brands`, `content_topics`, `emotions`, `cta`, `entities`, `questions`, `sentiment`. |
+
+The `text` field on `source_urls` is only valid when `source` is
+`reddit`.
+
+**Response — 202 Accepted**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "dr_01H...",
+    "dataset_id": "ds_01H...",
+    "status": { "type": "pending", "steps": [] },
+    "created_at": "2026-05-01T12:00:30Z"
+  }
+}
+```
+
+**Errors**
+
+| HTTP | `error_code`                          | When                                              |
+| ---- | ------------------------------------- | ------------------------------------------------- |
+| 404  | `dataset_not_found`                   | Dataset doesn't exist or isn't owned by the key.  |
+| 422  | `date_filter_unavailable`             | Date range exceeds the plan's window.             |
+| 422  | `unsupported_search_type`             | `type` not one of `prompt`/`url`.                 |
+| 422  | `invalid_scraping_target_url`         | One of the URLs is malformed.                     |
+| 422  | `duplicate_target_url`                | The same URL appears twice in `source_urls`.      |
+| 422  | `too_many_target_urls`                | More than 100 entries in `source_urls`.           |
+| 422  | `text_search_unavailable`             | `text` set on a non-Reddit `source_urls` entry.   |
+| 402  | `insufficient_credits_dataset_run`    | Account out of credits.                           |
+
+**cURL**
+
+```bash
+curl -X POST https://api.buzzabout.ai/v1/datasets/ds_01H.../runs \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "search_query": {
+      "type": "prompt",
+      "sources": ["reddit"],
+      "search_query": "cold brew"
+    },
+    "count": 200
+  }'
+```
+
+---
+
+## GET /v1/datasets/&#123;dataset_id&#125;/runs
+
+Cursor-paginated list of runs for the dataset, sorted by `created_at`.
+
+**Query parameters** — same as `GET /v1/datasets`.
+
+**Response — 200 OK** — `data` is an array of run objects (see below).
+
+---
+
+## GET /v1/datasets/&#123;dataset_id&#125;/runs/&#123;run_id&#125;
+
+Retrieve one run.
+
+**Response — 200 OK**
+
+```json
+{
+  "status": "success",
+  "data": {
+    "id": "dr_01H...",
+    "dataset_id": "ds_01H...",
+    "status": {
+      "type": "completed",
+      "steps": [
+        { "name": "scraping", "completed_at": 1714564890 },
+        { "name": "analysis", "completed_at": 1714565010 }
+      ]
+    },
+    "params": {
+      "search_query": {
+        "type": "prompt",
+        "sources": ["reddit"],
+        "search_query": "cold brew"
+      },
+      "date_range": null,
+      "country_code": "US",
+      "language": null,
+      "count": 200,
+      "num_comments_per_post": 10,
+      "enable_visual_recognition": false,
+      "enable_transcribing": false,
+      "content_analysis_actions": ["sentiment", "hook"]
+    },
+    "mentions_count": 200,
+    "created_at": "2026-05-01T12:00:30Z",
+    "updated_at": "2026-05-01T12:03:30Z"
+  }
+}
+```
+
+`status.type` is one of `pending`, `working`, `completed`, `failed`.
+A `failed` status surfaces an `error_message` field on a step entry.
+
+**Errors**
+
+```json title="404 dataset_run_not_found"
+{
+  "status": "client_error",
+  "error_code": "dataset_run_not_found",
+  "detail": "Dataset run not found",
+  "transient": false
+}
+```
+
+<Callout type="info">
+  Mentions populated by a run aren't returned by these endpoints —
+  fetch them via [`POST /v1/mentions`](/api/endpoints/mentions) with
+  `dataset_ids: [dataset_id]`.
+</Callout>

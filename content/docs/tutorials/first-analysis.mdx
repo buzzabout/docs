@@ -1,148 +1,238 @@
 ---
 title: Run your first analysis
-description: A longer walkthrough — pick a topic, run a pattern analysis, read the answer, and pull the cited mentions.
+description: End-to-end — scrape posts, collect audience profiles, then ask the AI assistant to summarise both.
 ---
 
 import { Callout } from 'fumadocs-ui/components/callout';
-import { Tab, Tabs } from 'fumadocs-ui/components/tabs';
+import { Steps, Step } from 'fumadocs-ui/components/steps';
 
 This tutorial assumes you've finished the
-[quickstart](/docs/getting-started/quickstart) and have an API key.
-We'll go a layer deeper: the full result schema, what each field means,
-and how to pull the cited mentions so you can verify the patterns
-yourself.
+[quickstart](/getting-started/quickstart) and have an API key. We'll
+chain four endpoints into a single workflow:
 
-## What we're building
+1. Create a dataset and trigger a Reddit run.
+2. Wait for it to complete.
+3. Create an audience dataset, kick off a profile-collection run from
+   the source dataset, and wait for it.
+4. Read the audience profiles.
+5. (Optional) Hand the dataset to the AI assistant via MCP.
 
-By the end you'll have a small script that:
+The whole flow takes 5–15 minutes depending on platform speed.
 
-1. Creates a topic.
-2. Runs a `pattern_match` analysis against it.
-3. Polls until the analysis is done.
-4. Prints the top three patterns plus their supporting mentions.
+## Setup
 
-## The script
-
-<Tabs items={['TypeScript', 'Python']}>
-  <Tab value="TypeScript">
-    ```ts title="first-analysis.ts"
-    import { Buzzabout } from "@buzzabout/sdk";
-
-    const client = new Buzzabout({ apiKey: process.env.BUZZABOUT_KEY! });
-
-    async function main() {
-      // 1. Create or find the topic.
-      const topic = await client.topics.upsert({
-        name: "cold brew",
-        platforms: ["reddit", "tiktok", "youtube"],
-      });
-
-      // 2. Kick off a pattern_match analysis.
-      const analysis = await client.analyses.create({
-        topicId: topic.id,
-        kind: "pattern_match",
-        question: "What hooks are pulling on Reddit this week?",
-        window: { last: "7d" },
-      });
-
-      // 3. Poll until done. .wait() resolves on terminal status.
-      const result = await analysis.wait({ timeoutMs: 5 * 60_000 });
-
-      // 4. Print the top three patterns + cited mentions.
-      for (const p of result.patterns.slice(0, 3)) {
-        console.log(`\n${p.label}  —  ${p.confidence.toFixed(2)}`);
-        console.log(`  ${p.summary}`);
-        for (const m of p.mentions.slice(0, 2)) {
-          console.log(`    [${m.platform}] ${m.url}`);
-        }
-      }
-    }
-
-    main().catch((err) => {
-      console.error(err);
-      process.exit(1);
-    });
-    ```
-  </Tab>
-  <Tab value="Python">
-    ```py title="first_analysis.py"
-    import os
-    from buzzabout import Buzzabout
-
-    client = Buzzabout(api_key=os.environ["BUZZABOUT_KEY"])
-
-    def main() -> None:
-        # 1. Create or find the topic.
-        topic = client.topics.upsert(
-            name="cold brew",
-            platforms=["reddit", "tiktok", "youtube"],
-        )
-
-        # 2. Kick off a pattern_match analysis.
-        analysis = client.analyses.create(
-            topic_id=topic.id,
-            kind="pattern_match",
-            question="What hooks are pulling on Reddit this week?",
-            window={"last": "7d"},
-        )
-
-        # 3. Poll until done.
-        result = analysis.wait(timeout_seconds=5 * 60)
-
-        # 4. Print the top three patterns + cited mentions.
-        for p in result.patterns[:3]:
-            print(f"\n{p.label}  —  {p.confidence:.2f}")
-            print(f"  {p.summary}")
-            for m in p.mentions[:2]:
-                print(f"    [{m.platform}] {m.url}")
-
-    if __name__ == "__main__":
-        main()
-    ```
-  </Tab>
-</Tabs>
-
-## What the response actually looks like
-
-```json title="result.json"
-{
-  "id": "ana_01HZ0XXXXXXXXXXXXXXXXXXXXX",
-  "topic_id": "topic_01HZXXXXXXXXXXXXXXXXXXXX",
-  "kind": "pattern_match",
-  "status": "succeeded",
-  "patterns": [
-    {
-      "label": "POV hook · 'nobody tells you'",
-      "summary": "A consistent first-person hook framed as private knowledge.",
-      "confidence": 0.91,
-      "volume": 248,
-      "mentions": [
-        {
-          "id": "men_01H...",
-          "platform": "reddit",
-          "url": "https://www.reddit.com/r/coffee/comments/...",
-          "snippet": "Nobody tells you that nitro cold brew tastes…"
-        }
-      ]
-    }
-  ]
-}
+```bash
+export BUZZABOUT_KEY="bz_live_..."
 ```
 
+## Walkthrough
+
+<Steps>
+
+<Step>
+
+### Create the source dataset
+
+```bash
+curl -X POST https://api.buzzabout.ai/v1/datasets \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "cold brew" }'
+```
+
+Save the returned `data.id` as `DATASET_ID`.
+
+</Step>
+
+<Step>
+
+### Trigger a run
+
+```bash
+curl -X POST https://api.buzzabout.ai/v1/datasets/$DATASET_ID/runs \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "search_query": {
+      "type": "prompt",
+      "sources": ["reddit"],
+      "search_query": "cold brew"
+    },
+    "count": 200,
+    "num_comments_per_post": 5,
+    "content_analysis_actions": ["sentiment", "hook", "cta"]
+  }'
+```
+
+Save the returned `data.id` as `DATASET_RUN_ID`.
+
+</Step>
+
+<Step>
+
+### Wait for the dataset run to complete
+
+```bash
+while true; do
+  STATUS=$(curl -s https://api.buzzabout.ai/v1/datasets/$DATASET_ID/runs/$DATASET_RUN_ID \
+    -H "x-api-key: $BUZZABOUT_KEY" \
+    | jq -r '.data.status.type')
+  echo "status: $STATUS"
+  case "$STATUS" in
+    completed|failed) break ;;
+  esac
+  sleep 10
+done
+```
+
+A 200-post Reddit run with sentiment + hook + CTA analysis typically
+finishes in 1–3 minutes.
+
+</Step>
+
+<Step>
+
+### List the top mentions
+
+```bash
+curl -X POST https://api.buzzabout.ai/v1/mentions \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "dataset_ids": ["'"$DATASET_ID"'"],
+    "limit": 5,
+    "sort": "engagement_rate",
+    "order": "desc",
+    "filters": [[{ "type": "sentiment", "values": ["positive"] }]]
+  }'
+```
+
+Each row has `text`, `url`, the `author` block, engagement counts, and
+the analysis fields you opted in to.
+
+</Step>
+
+<Step>
+
+### Create an audience dataset
+
+```bash
+curl -X POST https://api.buzzabout.ai/v1/audience_datasets \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "cold brew creators" }'
+```
+
+Save the returned `data.id` as `AUDIENCE_DATASET_ID`.
+
+</Step>
+
+<Step>
+
+### Kick off the audience run
+
+```bash
+curl -X POST https://api.buzzabout.ai/v1/audience_datasets/$AUDIENCE_DATASET_ID/runs \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "source_dataset_id": "'"$DATASET_ID"'",
+    "total_profile_count": 200
+  }'
+```
+
+The audience pipeline reads the source dataset's posts (across every
+completed run, deduped, top by `created_at DESC`), walks authors plus
+commenters, and stops when 200 profiles are collected. Save the
+returned `data.id` as `AUDIENCE_RUN_ID`.
+
+</Step>
+
+<Step>
+
+### Wait for the audience run
+
+Same poll loop, different URL:
+
+```bash
+while true; do
+  STATUS=$(curl -s https://api.buzzabout.ai/v1/audience_datasets/$AUDIENCE_DATASET_ID/runs/$AUDIENCE_RUN_ID \
+    -H "x-api-key: $BUZZABOUT_KEY" \
+    | jq -r '.data.status.type')
+  echo "audience status: $STATUS"
+  case "$STATUS" in
+    completed|failed) break ;;
+  esac
+  sleep 15
+done
+```
+
+Audience runs are slower than dataset runs because each profile is
+scraped + LLM-enriched. A 200-profile run typically takes 5–10
+minutes.
+
+</Step>
+
+<Step>
+
+### Read the audience profiles
+
+```bash
+curl -X POST https://api.buzzabout.ai/v1/audience_profiles \
+  -H "x-api-key: $BUZZABOUT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "audience_dataset_ids": ["'"$AUDIENCE_DATASET_ID"'"],
+    "sort": "follower_count",
+    "order": "desc",
+    "limit": 10
+  }'
+```
+
+Each row is a creator/commenter profile with platform metadata,
+audience metrics, and an LLM-derived layer (`creator_tier`,
+`content_niche`, `interest_clusters`, `summary`, etc.).
+
+</Step>
+
+<Step>
+
+### (Optional) Hand it to the AI assistant via MCP
+
+If you've installed the [Claude integration](/mcp/claude), open Claude
+and ask:
+
+> *"In dataset `ds_01H...`, what are the top three hooks pulling
+> on Reddit? Cite specific posts."*
+
+Claude will call `buzzabout__list_mentions` (`dataset_ids: ["ds_01H..."]`,
+`sort: engagement_rate`), then summarise. Or invoke the chat tool
+directly:
+
+> *"Use `buzzabout__ask` to find recurring narratives across the
+> creators in audience dataset `ad_01H...`."*
+
+`buzzabout__ask` returns markdown plus structured `references` —
+including `dataset` and `audience_dataset` ids the assistant pulled in.
+
+</Step>
+
+</Steps>
+
 <Callout type="info">
-  The `patterns[].confidence` field is bounded `0..1`. Treat anything
-  below `0.6` as a lead, not a finding.
+  Audience datasets persist independently of the source dataset. Once
+  the audience run completes, the profiles stay accessible even if you
+  later soft-delete the source dataset (though new audience runs
+  can no longer target it).
 </Callout>
-
-## Reading the cited mentions
-
-Every pattern cites at least one mention. The `mentions[].url` is a
-clickable URL on the original platform — open one or two and you'll see
-where the pattern came from. This is the part you ship in the brief
-deck, not the model's summary.
 
 ## Next steps
 
-- [MCP / Overview](/docs/mcp/overview) — same flow, driven by an LLM.
-- [API / Endpoints / `POST /v1/analyses`](/docs/api/endpoints/create-analysis) —
-  the full parameter reference for the call we just made.
+- [API / Endpoints / Datasets](/api/endpoints/datasets) — the full
+  parameter reference for the dataset run.
+- [API / Endpoints / Mentions](/api/endpoints/mentions) — every filter
+  and sort option for the mentions read.
+- [MCP / `buzzabout__ask`](/mcp/tools/ask) — the chat tool's input,
+  output, and reference taxonomy.
+- [MCP / Tools reference](/mcp/tools/reference) — every tool the host
+  LLM can call.
