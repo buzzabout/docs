@@ -15,12 +15,26 @@ your own integration.
 ## Transport
 
 ```text
-https://api.buzzabout.ai/mcp
+https://api.buzzabout.ai/mcp/
 ```
 
 Streamable HTTP transport (the modern MCP transport — no separate SSE
 endpoint). One URL handles tool listing, tool calls, and OAuth
 discovery.
+
+<Callout type="warn" title="Trailing slash is required">
+  Use `https://api.buzzabout.ai/mcp/` (with trailing slash). The
+  unslashed `/mcp` returns a `307` redirect that strips the request
+  body in many MCP clients, which surfaces as silent connection
+  failures or empty tool lists. Configure your client with the
+  trailing slash up front.
+</Callout>
+
+## Connecting
+
+Wire the URL above into your MCP client. The streamable-HTTP
+transport handles tool discovery, tool calls, and OAuth in a single
+endpoint — no separate SSE channel.
 
 ## Authentication
 

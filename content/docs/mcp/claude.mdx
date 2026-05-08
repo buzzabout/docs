@@ -49,7 +49,7 @@ posts.
       "mcpServers": {
         "buzzabout": {
           "transport": "streamable-http",
-          "url": "https://api.buzzabout.ai/mcp"
+          "url": "https://api.buzzabout.ai/mcp/"
         }
       }
     }
@@ -59,7 +59,7 @@ posts.
     | Field | Value                              |
     | ----- | ---------------------------------- |
     | Name  | `buzzabout`                        |
-    | URL   | `https://api.buzzabout.ai/mcp`     |
+    | URL   | `https://api.buzzabout.ai/mcp/`    |
     | Auth  | OAuth (Claude handles the redirect) |
   </Tab>
 </Tabs>
@@ -141,7 +141,7 @@ If the tools list is empty, the most likely causes are:
 1. **OAuth token revoked** — sign out and back in via Claude's
    integration settings.
 2. **Network proxy / firewall** — outbound HTTPS to
-   `api.buzzabout.ai/mcp` is blocked.
+   `api.buzzabout.ai/mcp/` is blocked.
 3. **Account doesn't have access** — the Buzzabout account hitting
    OAuth must be on a plan with API access.
 

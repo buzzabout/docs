@@ -49,8 +49,8 @@ session. Resuming a web-app-started chat is a v1.5 follow-up.
 
 ```json title="success"
 {
-  "chat_id": "chat_01H...",
-  "message_id": "msg_01H...",
+  "chat_id": "3DR9jYTuJTQeog0FseKCWE2fyLe",
+  "message_id": "3DR9jZ8VfJ1bGqK7HnQpW4tXcMd",
   "text": "## Top three hooks across the cold-brew dataset...",
   "references": [
     { "type": "dataset", "id": "ds_01H..." },
@@ -63,8 +63,8 @@ session. Resuming a web-app-started chat is a v1.5 follow-up.
 
 | Field      | Type   | Notes                                                                                                |
 | ---------- | ------ | ---------------------------------------------------------------------------------------------------- |
-| chat_id    | string | Pass back to a follow-up `buzzabout__ask` call to continue the conversation.                         |
-| message_id | string | Identifier for this turn's reply. Useful for log correlation.                                        |
+| chat_id    | string | 27-char KSUID with no prefix. Pass back to a follow-up `buzzabout__ask` call to continue the conversation. |
+| message_id | string | 27-char KSUID with no prefix. Identifier for this turn's reply, useful for log correlation.          |
 | text       | string | The assistant's full markdown response (no OpenUI primitives — `output_format=markdown` is forced).  |
 | references | array  | Side-effects produced by the response (see [Reference types](#reference-types) below).               |
 
@@ -113,16 +113,16 @@ A typical multi-turn agent loop:
 
 ```text
 1. host: buzzabout__ask({ prompt: "Find the top hooks in cold-brew TikToks this week" })
-   → { chat_id: "chat_01H...", text: "...", references: [{ type: "dataset", id: "ds_01H..." }] }
+   → { chat_id: "3DR9jYTuJTQeog0FseKCWE2fyLe", text: "...", references: [{ type: "dataset", id: "ds_01H..." }] }
 
 2. host: buzzabout__list_mentions({ dataset_ids: ["ds_01H..."], sort: "engagement_rate", limit: 5 })
    → { content: [...], cursor: null }
 
 3. host: buzzabout__ask({
-       chat_id: "chat_01H...",
+       chat_id: "3DR9jYTuJTQeog0FseKCWE2fyLe",
        prompt: "Summarise the top 5 by hook framing"
      })
-   → { chat_id: "chat_01H...", text: "...", references: [...] }
+   → { chat_id: "3DR9jYTuJTQeog0FseKCWE2fyLe", text: "...", references: [...] }
 ```
 
 Note step 1 returned a `dataset` reference — the assistant created a
