@@ -31,13 +31,15 @@ the lifecycle and rotation guidance.
 ## Endpoint
 
 ```text
-https://api.buzzabout.ai/mcp
+https://api.buzzabout.ai/mcp/
 ```
 
-Streamable-HTTP transport. Send the API key on every request:
+Streamable-HTTP transport. The trailing slash is required — the
+unslashed `/mcp` returns a `307` redirect that strips the request
+body in many MCP clients. Send the API key on every request:
 
 ```http
-POST /mcp HTTP/1.1
+POST /mcp/ HTTP/1.1
 Host: api.buzzabout.ai
 x-api-key: bz_live_...
 Content-Type: application/json
@@ -60,7 +62,7 @@ async def main() -> None:
     headers = {"x-api-key": os.environ["BUZZABOUT_KEY"]}
 
     async with streamablehttp_client(
-        "https://api.buzzabout.ai/mcp",
+        "https://api.buzzabout.ai/mcp/",
         headers=headers,
     ) as (read, write, _):
         async with ClientSession(read, write) as session:
@@ -87,7 +89,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 const transport = new StreamableHTTPClientTransport(
-  new URL("https://api.buzzabout.ai/mcp"),
+  new URL("https://api.buzzabout.ai/mcp/"),
   {
     requestInit: {
       headers: { "x-api-key": process.env.BUZZABOUT_KEY! },
@@ -117,7 +119,7 @@ checks. The MCP handshake involves an `initialize` call and a
 `tools/list` follow-up; the SDKs hide that, but for a smoke test:
 
 ```bash
-curl -X POST https://api.buzzabout.ai/mcp \
+curl -X POST https://api.buzzabout.ai/mcp/ \
   -H "x-api-key: $BUZZABOUT_KEY" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json,text/event-stream" \

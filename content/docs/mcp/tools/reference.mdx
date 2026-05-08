@@ -59,7 +59,8 @@ order, cursor, limit mirror the
 | `buzzabout__ask` | `prompt`            | `{ chat_id, message_id, text, references }` or `{ error }` (forbidden for API-key callers) |
 
 `chat_id` is optional — pass it from a prior `buzzabout__ask` response
-to continue the same chat. See [the deep-dive](/mcp/tools/ask) for
+to continue the same chat. Both `chat_id` and `message_id` are 27-char
+KSUIDs with no prefix. See [the deep-dive](/mcp/tools/ask) for
 input shape, response shape, and how to expand `references`.
 
 ## Pagination model
